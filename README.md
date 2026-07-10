@@ -58,7 +58,7 @@ sysinfo@pessacheyal/
 
 ## Screenshot
 
-_TODO: add a screenshot once the desklet is running on an Ubuntu machine._
+![System Info desklet running on Cinnamon](screenshot.png)
 
 ## License
 
