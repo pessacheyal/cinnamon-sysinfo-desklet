@@ -6,12 +6,17 @@
         "general": {
             "type": "page",
             "title": "General",
-            "sections": ["general-main"]
+            "sections": ["general-appearance", "general-network"]
         },
-        "general-main": {
+        "general-appearance": {
             "type": "section",
             "title": "Appearance & refresh",
-            "keys": ["refresh", "font-size", "theme-mode"]
+            "keys": ["refresh", "font-size", "theme-mode", "bg-opacity"]
+        },
+        "general-network": {
+            "type": "section",
+            "title": "Network",
+            "keys": ["fetch-public-ip"]
         },
 
         "sections": {
@@ -21,13 +26,8 @@
         },
         "sections-main": {
             "type": "section",
-            "title": "Sections to display",
-            "keys": [
-                "show-cpu", "show-mem", "show-swap", "show-disk",
-                "show-uptime", "show-loadavg", "show-battery",
-                "show-network", "show-per-iface",
-                "show-ip", "fetch-public-ip"
-            ]
+            "title": "Sections to display (drag / reorder)",
+            "keys": ["sections-list"]
         },
 
         "graphs": {
@@ -65,26 +65,64 @@
         },
         "description": "Theme"
     },
-
-    "show-cpu":     { "type": "checkbox", "default": true,  "description": "CPU + temperature" },
-    "show-mem":     { "type": "checkbox", "default": true,  "description": "RAM" },
-    "show-swap":    { "type": "checkbox", "default": true,  "description": "Swap" },
-    "show-disk":    { "type": "checkbox", "default": true,  "description": "Disk usage (root filesystem)" },
-    "show-uptime":  { "type": "checkbox", "default": true,  "description": "Uptime" },
-    "show-loadavg": { "type": "checkbox", "default": true,  "description": "Load average (1 / 5 / 15 min)" },
-    "show-battery": { "type": "checkbox", "default": true,  "description": "Battery (skipped on desktops)" },
-    "show-network": { "type": "checkbox", "default": true,  "description": "Network throughput" },
-    "show-per-iface": {
-        "type": "checkbox", "default": false,
-        "description": "Break down network per interface",
-        "dependency": "show-network"
+    "bg-opacity": {
+        "type": "scale",
+        "default": 65,
+        "min": 0, "max": 100, "step": 1,
+        "units": "%",
+        "description": "Background opacity",
+        "tooltip": "0 = fully transparent, 100 = fully opaque"
     },
-    "show-ip":      { "type": "checkbox", "default": true,  "description": "IP addresses" },
+
     "fetch-public-ip": {
-        "type": "checkbox", "default": false,
-        "description": "Also show public IP (requires curl + network)",
-        "tooltip": "Queries ifconfig.me at most every 5 minutes",
-        "dependency": "show-ip"
+        "type": "checkbox",
+        "default": false,
+        "description": "Also show public IP on the IP row (requires curl + network)",
+        "tooltip": "Queries ifconfig.me at most every 5 minutes"
+    },
+
+    "sections-list": {
+        "type": "list",
+        "description": "Sections",
+        "columns": [
+            {
+                "id": "section",
+                "title": "Section",
+                "type": "string",
+                "expand-width": true,
+                "options": {
+                    "CPU + temperature":       "cpu",
+                    "RAM":                     "mem",
+                    "Swap":                    "swap",
+                    "Disk usage":              "disk",
+                    "Uptime":                  "uptime",
+                    "Load average":            "loadavg",
+                    "Battery":                 "battery",
+                    "Network throughput":      "network",
+                    "Network (per interface)": "network-ifaces",
+                    "IP addresses":            "ip"
+                }
+            },
+            {
+                "id": "enabled",
+                "title": "Show",
+                "type": "boolean",
+                "align": 0.5,
+                "default": true
+            }
+        ],
+        "default": [
+            { "section": "cpu",             "enabled": true  },
+            { "section": "mem",             "enabled": true  },
+            { "section": "swap",            "enabled": true  },
+            { "section": "disk",            "enabled": true  },
+            { "section": "uptime",          "enabled": true  },
+            { "section": "loadavg",         "enabled": true  },
+            { "section": "battery",         "enabled": true  },
+            { "section": "network",         "enabled": true  },
+            { "section": "network-ifaces",  "enabled": false },
+            { "section": "ip",              "enabled": true  }
+        ]
     },
 
     "show-graphs":   { "type": "checkbox", "default": true, "description": "Show sparkline graphs" },

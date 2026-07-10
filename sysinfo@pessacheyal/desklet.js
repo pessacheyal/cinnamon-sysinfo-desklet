@@ -11,6 +11,20 @@ const HISTORY_MAX_CAP = 240;
 const PUBLIC_IP_TTL_SEC = 300;
 const DARK_THEME_PATTERN = /dark|noir|black|nord|dracula|mint-y-d|arc-dark|adwaita-dark/;
 
+// Section key → { line: label key stored on this._labels, graph: true|false }
+const SECTION_MAP = {
+    "cpu":            { line: "cpu",       graph: true  },
+    "mem":            { line: "mem",       graph: true  },
+    "swap":           { line: "swap",      graph: false },
+    "disk":           { line: "disk",      graph: false },
+    "uptime":         { line: "uptime",    graph: false },
+    "loadavg":        { line: "loadavg",   graph: false },
+    "battery":        { line: "battery",   graph: false },
+    "network":        { line: "net",       graph: true  },
+    "network-ifaces": { line: "netIfaces", graph: false },
+    "ip":             { line: "ip",        graph: false }
+};
+
 function SysInfoDesklet(metadata, desklet_id) {
     this._init(metadata, desklet_id);
 }
@@ -31,6 +45,8 @@ SysInfoDesklet.prototype = {
         this._publicIP = null;
         this._publicIPFetchedAt = 0;
         this._publicIPFetching = false;
+        this._enabledSet = new Set();
+        this._orderedSections = [];
 
         this._bindSettings(desklet_id);
         this._bindTheme();
@@ -52,18 +68,10 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "refresh",         "refresh",       onSchedule);
         this.settings.bindProperty(b, "font-size",       "fontSize",      onStyle);
         this.settings.bindProperty(b, "theme-mode",      "themeMode",     onStyle);
+        this.settings.bindProperty(b, "bg-opacity",      "bgOpacity",     onStyle);
 
-        this.settings.bindProperty(b, "show-cpu",        "showCpu",       onSection);
-        this.settings.bindProperty(b, "show-mem",        "showMem",       onSection);
-        this.settings.bindProperty(b, "show-swap",       "showSwap",      onSection);
-        this.settings.bindProperty(b, "show-disk",       "showDisk",      onSection);
-        this.settings.bindProperty(b, "show-uptime",     "showUptime",    onSection);
-        this.settings.bindProperty(b, "show-loadavg",    "showLoadavg",   onSection);
-        this.settings.bindProperty(b, "show-battery",    "showBattery",   onSection);
-        this.settings.bindProperty(b, "show-network",    "showNetwork",   onSection);
-        this.settings.bindProperty(b, "show-per-iface",  "showPerIface",  onSection);
-        this.settings.bindProperty(b, "show-ip",         "showIp",        onSection);
         this.settings.bindProperty(b, "fetch-public-ip", "fetchPublicIp", onSection);
+        this.settings.bindProperty(b, "sections-list",   "sectionsList",  onSection);
 
         this.settings.bindProperty(b, "show-graphs",     "showGraphs",    onSection);
         this.settings.bindProperty(b, "graph-width",     "graphWidth",    onSection);
@@ -96,7 +104,10 @@ SysInfoDesklet.prototype = {
     _applyStyle: function() {
         if (!this._container) return;
         const dark = this._isDarkTheme();
-        const bg = dark ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.88)";
+        const opacity = Math.max(0, Math.min(100, (this.bgOpacity === undefined ? 65 : this.bgOpacity))) / 100;
+        const bg = dark
+            ? "rgba(0,0,0," + opacity.toFixed(2) + ")"
+            : "rgba(255,255,255," + opacity.toFixed(2) + ")";
         const fg = dark ? "#eeeeee" : "#222222";
         const titleColor = dark ? "#62a0ea" : "#1a5fb4";
         const fs = this.fontSize || 12;
@@ -144,23 +155,40 @@ SysInfoDesklet.prototype = {
         this._update();
     },
 
+    _computeSectionsFromList: function() {
+        this._orderedSections = [];
+        this._enabledSet = new Set();
+        const list = Array.isArray(this.sectionsList) ? this.sectionsList : [];
+        for (let i = 0; i < list.length; i++) {
+            const row = list[i];
+            if (!row || !row.section || !SECTION_MAP[row.section]) continue;
+            if (row.enabled === false) continue;
+            if (this._enabledSet.has(row.section)) continue;
+            this._enabledSet.add(row.section);
+            this._orderedSections.push(row.section);
+        }
+    },
+
     _buildUI: function() {
+        this._computeSectionsFromList();
+
         this._labels = {};
         this._graphs = {};
         this._container = new St.BoxLayout({ vertical: true, style_class: "sysinfo-container" });
-        this._title = new St.Label({ text: "System Info", style_class: "sysinfo-title" });
+
+        const host = GLib.get_host_name();
+        this._title = new St.Label({
+            text: host ? "System Info [" + host + "]" : "System Info",
+            style_class: "sysinfo-title"
+        });
         this._container.add(this._title);
 
-        if (this.showCpu)     { this._addLine("cpu");    this._addGraph("cpu"); }
-        if (this.showMem)     { this._addLine("mem");    this._addGraph("mem"); }
-        if (this.showSwap)      this._addLine("swap");
-        if (this.showDisk)      this._addLine("disk");
-        if (this.showUptime)    this._addLine("uptime");
-        if (this.showLoadavg)   this._addLine("loadavg");
-        if (this.showBattery)   this._addLine("battery");
-        if (this.showNetwork) { this._addLine("net");    this._addGraph("net"); }
-        if (this.showNetwork && this.showPerIface) this._addLine("netIfaces");
-        if (this.showIp)        this._addLine("ip");
+        for (let i = 0; i < this._orderedSections.length; i++) {
+            const key = this._orderedSections[i];
+            const map = SECTION_MAP[key];
+            this._addLine(map.line);
+            if (map.graph) this._addGraph(map.line);
+        }
 
         this.setContent(this._container);
     },
@@ -449,8 +477,9 @@ SysInfoDesklet.prototype = {
     // ------------- update loop -------------
     _update: function() {
         if (this._removed || !this._labels) return;
+        const on = this._enabledSet;
 
-        if (this.showCpu) {
+        if (on.has("cpu")) {
             const cpu = this._getCpu();
             let cpuPct = 0;
             if (cpu && this._prevCpu) {
@@ -469,9 +498,9 @@ SysInfoDesklet.prototype = {
             this._pushHistory("cpu", cpuPct);
         }
 
-        const needMem = this.showMem || this.showSwap;
+        const needMem = on.has("mem") || on.has("swap");
         const mem = needMem ? this._getMem() : null;
-        if (this.showMem && mem && mem.total > 0 && this._labels.mem) {
+        if (on.has("mem") && mem && mem.total > 0 && this._labels.mem) {
             const pct = 100 * mem.used / mem.total;
             this._labels.mem.set_text(
                 "RAM:  " + this._fmt(mem.used) + " / " + this._fmt(mem.total) +
@@ -479,7 +508,7 @@ SysInfoDesklet.prototype = {
             );
             this._pushHistory("mem", pct);
         }
-        if (this.showSwap && this._labels.swap) {
+        if (on.has("swap") && this._labels.swap) {
             if (mem && mem.swapTotal > 0) {
                 const pct = 100 * mem.swapUsed / mem.swapTotal;
                 this._labels.swap.set_text(
@@ -491,7 +520,7 @@ SysInfoDesklet.prototype = {
             }
         }
 
-        if (this.showDisk && this._labels.disk) {
+        if (on.has("disk") && this._labels.disk) {
             const d = this._getDisk();
             if (d && d.total > 0) {
                 const pct = 100 * d.used / d.total;
@@ -502,12 +531,12 @@ SysInfoDesklet.prototype = {
             }
         }
 
-        if (this.showUptime && this._labels.uptime) {
+        if (on.has("uptime") && this._labels.uptime) {
             const u = this._getUptime();
             if (u !== null) this._labels.uptime.set_text("Up:   " + this._fmtUptime(u));
         }
 
-        if (this.showLoadavg && this._labels.loadavg) {
+        if (on.has("loadavg") && this._labels.loadavg) {
             const la = this._getLoadAvg();
             if (la) {
                 this._labels.loadavg.set_text(
@@ -516,7 +545,7 @@ SysInfoDesklet.prototype = {
             }
         }
 
-        if (this.showBattery && this._labels.battery) {
+        if (on.has("battery") && this._labels.battery) {
             const bat = this._getBattery();
             if (bat) {
                 const mark = bat.status === "Charging" ? " ⚡" :
@@ -529,14 +558,15 @@ SysInfoDesklet.prototype = {
             }
         }
 
-        if (this.showNetwork) {
+        const needNet = on.has("network") || on.has("network-ifaces");
+        if (needNet) {
             const net = this._getNet();
             if (net && this._prevNet) {
                 const dt = net.time - this._prevNet.time;
                 if (dt > 0) {
                     const rxRate = Math.max(0, (net.total.rx - this._prevNet.total.rx) / dt);
                     const txRate = Math.max(0, (net.total.tx - this._prevNet.total.tx) / dt);
-                    if (this._labels.net) {
+                    if (on.has("network") && this._labels.net) {
                         this._labels.net.set_text(
                             "Net:  ↓ " + this._fmt(rxRate) + "/s  ↑ " + this._fmt(txRate) + "/s"
                         );
@@ -545,7 +575,7 @@ SysInfoDesklet.prototype = {
                     this._netMax = Math.max(this._netMax * 0.97, combined, 1024);
                     this._pushHistory("net", combined);
 
-                    if (this.showPerIface && this._labels.netIfaces) {
+                    if (on.has("network-ifaces") && this._labels.netIfaces) {
                         const lines = [];
                         for (const iface in net.ifaces) {
                             const prev = this._prevNet.ifaces[iface];
@@ -558,13 +588,13 @@ SysInfoDesklet.prototype = {
                         this._labels.netIfaces.set_text(lines.length ? lines.join("\n") : "  (all interfaces idle)");
                     }
                 }
-            } else if (this._labels.net) {
+            } else if (on.has("network") && this._labels.net) {
                 this._labels.net.set_text("Net:  measuring...");
             }
             this._prevNet = net;
         }
 
-        if (this.showIp && this._labels.ip) {
+        if (on.has("ip") && this._labels.ip) {
             this._localIP = this._getLocalIp();
             if (this.fetchPublicIp) this._fetchPublicIpAsync();
             this._refreshIpLabel();

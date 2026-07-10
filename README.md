@@ -1,6 +1,6 @@
 # System Info — Cinnamon Desklet
 
-A configurable desktop widget for the Cinnamon desktop (Linux Mint, or Cinnamon on Ubuntu) that displays live system metrics with optional history sparklines.
+A configurable desktop widget for the Cinnamon desktop (Linux Mint, or Cinnamon on Ubuntu) that displays live system metrics with optional history sparklines. The title includes your hostname — handy when the same desklet runs on more than one machine.
 
 ## Metrics
 
@@ -19,8 +19,9 @@ The desklet reads directly from `/proc` and `/sys` — no external daemons. Only
 ## Configurable (right-click → **Configure**)
 
 - Refresh interval (1–60 s)
-- Font size and theme (auto / dark / light)
-- Toggle each section individually
+- Font size, theme (auto / dark / light), and **background opacity** (0–100 %, use 0 for a fully transparent panel)
+- **Reorderable sections** — the *Sections* tab uses a list widget with Move Up / Move Down / Add / Remove / Show buttons, so you choose which stats appear and in which order
+- Public-IP lookup on the IP row (opt-in)
 - Sparkline graphs: on/off, width, height, history length (samples), and line color
 
 ## Install
