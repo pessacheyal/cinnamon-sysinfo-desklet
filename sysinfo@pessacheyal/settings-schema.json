@@ -6,17 +6,12 @@
         "general": {
             "type": "page",
             "title": "General",
-            "sections": ["general-appearance", "general-network"]
+            "sections": ["general-appearance"]
         },
         "general-appearance": {
             "type": "section",
             "title": "Appearance & refresh",
             "keys": ["refresh", "font-size", "theme-mode", "bg-opacity"]
-        },
-        "general-network": {
-            "type": "section",
-            "title": "Network",
-            "keys": ["fetch-public-ip"]
         },
 
         "sections": {
@@ -75,10 +70,8 @@
     },
 
     "fetch-public-ip": {
-        "type": "checkbox",
-        "default": false,
-        "description": "Also show public IP on the IP row (requires curl + network)",
-        "tooltip": "Queries ifconfig.me at most every 5 minutes"
+        "type": "generic",
+        "default": false
     },
 
     "sections-list": {
@@ -100,7 +93,8 @@
                     "Battery":                 "battery",
                     "Network throughput":      "network",
                     "Network (per interface)": "network-ifaces",
-                    "IP addresses":            "ip"
+                    "Local IP address":        "ip-local",
+                    "Public IP address":       "ip-public"
                 }
             },
             {
@@ -121,7 +115,8 @@
             { "section": "battery",         "enabled": true  },
             { "section": "network",         "enabled": true  },
             { "section": "network-ifaces",  "enabled": false },
-            { "section": "ip",              "enabled": true  }
+            { "section": "ip-local",        "enabled": true  },
+            { "section": "ip-public",       "enabled": false }
         ]
     },
 

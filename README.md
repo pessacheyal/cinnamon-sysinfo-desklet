@@ -12,7 +12,7 @@ A configurable desktop widget for the Cinnamon desktop (Linux Mint, or Cinnamon 
 - **Load average** — 1 / 5 / 15 minute
 - **Battery** — capacity % and charging state (auto-hidden on desktops)
 - **Network** — aggregate ↓/↑ throughput, optionally broken down per interface
-- **IP addresses** — local IP always; public IP on demand (via `curl ifconfig.me`, cached 5 min)
+- **IP addresses** — local IP and public IP are now separate sections (each can be enabled or hidden independently). Local IP tries `hostname -I` then falls back to `ip -4 addr`. Public IP goes through `curl ifconfig.me` and is cached for 5 minutes.
 
 The desklet reads directly from `/proc` and `/sys` — no external daemons. Only `hostname`, `df`, and (optionally) `curl` are shelled out to; all are part of a standard Ubuntu install.
 

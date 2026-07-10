@@ -22,7 +22,8 @@ const SECTION_MAP = {
     "battery":        { line: "battery",   graph: false },
     "network":        { line: "net",       graph: true  },
     "network-ifaces": { line: "netIfaces", graph: false },
-    "ip":             { line: "ip",        graph: false }
+    "ip-local":       { line: "localIp",   graph: false },
+    "ip-public":      { line: "publicIp",  graph: false }
 };
 
 function SysInfoDesklet(metadata, desklet_id) {
@@ -161,8 +162,24 @@ SysInfoDesklet.prototype = {
         const list = Array.isArray(this.sectionsList) ? this.sectionsList : [];
         for (let i = 0; i < list.length; i++) {
             const row = list[i];
-            if (!row || !row.section || !SECTION_MAP[row.section]) continue;
+            if (!row || !row.section) continue;
             if (row.enabled === false) continue;
+
+            // Legacy migration: a saved "ip" row becomes ip-local (and ip-public if
+            // the user previously had fetch-public-ip enabled).
+            if (row.section === "ip") {
+                if (!this._enabledSet.has("ip-local")) {
+                    this._enabledSet.add("ip-local");
+                    this._orderedSections.push("ip-local");
+                }
+                if (this.fetchPublicIp && !this._enabledSet.has("ip-public")) {
+                    this._enabledSet.add("ip-public");
+                    this._orderedSections.push("ip-public");
+                }
+                continue;
+            }
+
+            if (!SECTION_MAP[row.section]) continue;
             if (this._enabledSet.has(row.section)) continue;
             this._enabledSet.add(row.section);
             this._orderedSections.push(row.section);
@@ -346,13 +363,22 @@ SysInfoDesklet.prototype = {
     _getLocalIp: function() {
         try {
             const [ok, stdout] = GLib.spawn_command_line_sync("hostname -I");
-            if (!ok) return null;
-            const parts = stdout.toString().trim().split(/\s+/)
-                .filter(function(s) { return s && s.indexOf(":") === -1; });
-            return parts.length ? parts[0] : null;
-        } catch (e) {
-            return null;
-        }
+            if (ok) {
+                const parts = stdout.toString().trim().split(/\s+/)
+                    .filter(function(s) { return s && s.indexOf(":") === -1; });
+                if (parts.length) return parts[0];
+            }
+        } catch (e) {}
+        // Fallback: `ip -4 -o addr show scope global` — works when `hostname -I` is
+        // empty (e.g. no DNS suffix set, or hostname package trimmed on server installs).
+        try {
+            const [ok, stdout] = GLib.spawn_command_line_sync("ip -4 -o addr show scope global");
+            if (ok) {
+                const m = stdout.toString().match(/inet\s+(\d+\.\d+\.\d+\.\d+)/);
+                if (m) return m[1];
+            }
+        } catch (e) {}
+        return null;
     },
 
     _fetchPublicIpAsync: function() {
@@ -375,21 +401,15 @@ SysInfoDesklet.prototype = {
                     if (ip.length > 0 && ip.length <= 45 && /^[0-9a-f\.\:]+$/i.test(ip)) {
                         this._publicIP = ip;
                         this._publicIPFetchedAt = GLib.get_monotonic_time() / 1000000;
-                        this._refreshIpLabel();
+                        if (this._labels && this._labels.publicIp) {
+                            this._labels.publicIp.set_text("Public: " + this._publicIP);
+                        }
                     }
                 } catch (e) {}
             }));
         } catch (e) {
             this._publicIPFetching = false;
         }
-    },
-
-    _refreshIpLabel: function() {
-        if (!this._labels || !this._labels.ip) return;
-        const parts = [];
-        if (this._localIP) parts.push("local " + this._localIP);
-        if (this._publicIP && this.fetchPublicIp) parts.push("public " + this._publicIP);
-        this._labels.ip.set_text("IP:   " + (parts.length ? parts.join("  ·  ") : "unknown"));
     },
 
     // ------------- formatting -------------
@@ -594,10 +614,14 @@ SysInfoDesklet.prototype = {
             this._prevNet = net;
         }
 
-        if (on.has("ip") && this._labels.ip) {
+        if (on.has("ip-local") && this._labels.localIp) {
             this._localIP = this._getLocalIp();
-            if (this.fetchPublicIp) this._fetchPublicIpAsync();
-            this._refreshIpLabel();
+            this._labels.localIp.set_text("Local:  " + (this._localIP || "unavailable"));
+        }
+
+        if (on.has("ip-public") && this._labels.publicIp) {
+            this._fetchPublicIpAsync();
+            this._labels.publicIp.set_text("Public: " + (this._publicIP || "fetching…"));
         }
 
         this._repaintGraphs();
