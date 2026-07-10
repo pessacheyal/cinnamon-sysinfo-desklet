@@ -1,5 +1,47 @@
 {
-    "sec-general": { "type": "header", "description": "General" },
+    "layout": {
+        "type": "layout",
+        "pages": ["general", "sections", "graphs"],
+
+        "general": {
+            "type": "page",
+            "title": "General",
+            "sections": ["general-main"]
+        },
+        "general-main": {
+            "type": "section",
+            "title": "Appearance & refresh",
+            "keys": ["refresh", "font-size", "theme-mode"]
+        },
+
+        "sections": {
+            "type": "page",
+            "title": "Sections",
+            "sections": ["sections-main"]
+        },
+        "sections-main": {
+            "type": "section",
+            "title": "Sections to display",
+            "keys": [
+                "show-cpu", "show-mem", "show-swap", "show-disk",
+                "show-uptime", "show-loadavg", "show-battery",
+                "show-network", "show-per-iface",
+                "show-ip", "fetch-public-ip"
+            ]
+        },
+
+        "graphs": {
+            "type": "page",
+            "title": "Graphs",
+            "sections": ["graphs-main"]
+        },
+        "graphs-main": {
+            "type": "section",
+            "title": "History graphs",
+            "keys": ["show-graphs", "graph-width", "graph-height", "graph-samples", "graph-color"]
+        }
+    },
+
     "refresh": {
         "type": "spinbutton",
         "default": 2, "min": 1, "max": 60, "step": 1,
@@ -24,7 +66,6 @@
         "description": "Theme"
     },
 
-    "sec-sections": { "type": "header", "description": "Sections to display" },
     "show-cpu":     { "type": "checkbox", "default": true,  "description": "CPU + temperature" },
     "show-mem":     { "type": "checkbox", "default": true,  "description": "RAM" },
     "show-swap":    { "type": "checkbox", "default": true,  "description": "Swap" },
@@ -46,7 +87,6 @@
         "dependency": "show-ip"
     },
 
-    "sec-graphs": { "type": "header", "description": "History graphs" },
     "show-graphs":   { "type": "checkbox", "default": true, "description": "Show sparkline graphs" },
     "graph-width":   {
         "type": "spinbutton",
