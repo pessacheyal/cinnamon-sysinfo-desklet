@@ -438,12 +438,12 @@ SysInfoDesklet.prototype = {
 
     _refreshPublicIpLabel: function() {
         if (!this._labels || !this._labels.publicIp) return;
-        const parts = [];
-        if (this._publicIPv4) parts.push("v4 " + this._publicIPv4);
-        if (this._publicIPv6) parts.push("v6 " + this._publicIPv6);
+        const lines = [];
+        if (this._publicIPv4) lines.push("Public v4: " + this._publicIPv4);
+        if (this._publicIPv6) lines.push("Public v6: " + this._publicIPv6);
         let text;
-        if (parts.length) {
-            text = "Public: " + parts.join("  ·  ");
+        if (lines.length) {
+            text = lines.join("\n");
         } else if (this._publicIPFetching) {
             text = "Public: fetching…";
         } else {
