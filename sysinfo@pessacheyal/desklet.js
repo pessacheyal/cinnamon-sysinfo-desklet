@@ -553,7 +553,7 @@ SysInfoDesklet.prototype = {
 
         if (on.has("uptime") && this._labels.uptime) {
             const u = this._getUptime();
-            if (u !== null) this._labels.uptime.set_text("Up:   " + this._fmtUptime(u));
+            if (u !== null) this._labels.uptime.set_text("Uptime: " + this._fmtUptime(u));
         }
 
         if (on.has("loadavg") && this._labels.loadavg) {
@@ -571,10 +571,10 @@ SysInfoDesklet.prototype = {
                 const mark = bat.status === "Charging" ? " ⚡" :
                              bat.status === "Full"     ? " ✓"  : "";
                 this._labels.battery.set_text(
-                    "Batt: " + bat.capacity + "%  " + bat.status + mark
+                    "Battery: " + bat.capacity + "%  " + bat.status + mark
                 );
             } else {
-                this._labels.battery.set_text("Batt: N/A");
+                this._labels.battery.set_text("Battery: N/A");
             }
         }
 
