@@ -1,0 +1,77 @@
+{
+    "sec-general": { "type": "header", "description": "General" },
+    "refresh": {
+        "type": "spinbutton",
+        "default": 2, "min": 1, "max": 60, "step": 1,
+        "units": "seconds",
+        "description": "Refresh interval",
+        "tooltip": "How often the metrics are re-read (seconds)"
+    },
+    "font-size": {
+        "type": "spinbutton",
+        "default": 12, "min": 9, "max": 24, "step": 1,
+        "units": "px",
+        "description": "Font size"
+    },
+    "theme-mode": {
+        "type": "combobox",
+        "default": "auto",
+        "options": {
+            "Auto (follow desktop)": "auto",
+            "Dark": "dark",
+            "Light": "light"
+        },
+        "description": "Theme"
+    },
+
+    "sec-sections": { "type": "header", "description": "Sections to display" },
+    "show-cpu":     { "type": "checkbox", "default": true,  "description": "CPU + temperature" },
+    "show-mem":     { "type": "checkbox", "default": true,  "description": "RAM" },
+    "show-swap":    { "type": "checkbox", "default": true,  "description": "Swap" },
+    "show-disk":    { "type": "checkbox", "default": true,  "description": "Disk usage (root filesystem)" },
+    "show-uptime":  { "type": "checkbox", "default": true,  "description": "Uptime" },
+    "show-loadavg": { "type": "checkbox", "default": true,  "description": "Load average (1 / 5 / 15 min)" },
+    "show-battery": { "type": "checkbox", "default": true,  "description": "Battery (skipped on desktops)" },
+    "show-network": { "type": "checkbox", "default": true,  "description": "Network throughput" },
+    "show-per-iface": {
+        "type": "checkbox", "default": false,
+        "description": "Break down network per interface",
+        "dependency": "show-network"
+    },
+    "show-ip":      { "type": "checkbox", "default": true,  "description": "IP addresses" },
+    "fetch-public-ip": {
+        "type": "checkbox", "default": false,
+        "description": "Also show public IP (requires curl + network)",
+        "tooltip": "Queries ifconfig.me at most every 5 minutes",
+        "dependency": "show-ip"
+    },
+
+    "sec-graphs": { "type": "header", "description": "History graphs" },
+    "show-graphs":   { "type": "checkbox", "default": true, "description": "Show sparkline graphs" },
+    "graph-width":   {
+        "type": "spinbutton",
+        "default": 220, "min": 60, "max": 500, "step": 10,
+        "units": "px",
+        "description": "Graph width",
+        "dependency": "show-graphs"
+    },
+    "graph-height":  {
+        "type": "spinbutton",
+        "default": 32, "min": 16, "max": 100, "step": 2,
+        "units": "px",
+        "description": "Graph height",
+        "dependency": "show-graphs"
+    },
+    "graph-samples": {
+        "type": "spinbutton",
+        "default": 60, "min": 20, "max": 240, "step": 10,
+        "description": "History length (samples)",
+        "dependency": "show-graphs"
+    },
+    "graph-color": {
+        "type": "colorchooser",
+        "default": "rgba(98,160,234,1)",
+        "description": "Graph line color",
+        "dependency": "show-graphs"
+    }
+}

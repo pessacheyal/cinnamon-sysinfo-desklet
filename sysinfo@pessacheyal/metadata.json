@@ -1,8 +1,8 @@
 {
     "uuid": "sysinfo@pessacheyal",
     "name": "System Info",
-    "description": "Shows CPU (with temperature), RAM, swap, disk, and network throughput on the desktop.",
-    "version": "1.0.0",
+    "description": "Shows CPU (with temperature), RAM, swap, disk, network, uptime, load average, battery, and IP addresses on the desktop, with optional history sparklines and light/dark theming.",
+    "version": "1.1.0",
     "prevent-decorations": false,
     "max-instances": -1
 }
