@@ -43,9 +43,11 @@ SysInfoDesklet.prototype = {
         this._history = { cpu: [], mem: [], net: [] };
         this._netMax = 1024;
         this._localIP = null;
-        this._publicIP = null;
+        this._publicIPv4 = null;
+        this._publicIPv6 = null;
         this._publicIPFetchedAt = 0;
         this._publicIPFetching = false;
+        this._pendingIpFetches = 0;
         this._enabledSet = new Set();
         this._orderedSections = [];
 
@@ -384,32 +386,63 @@ SysInfoDesklet.prototype = {
     _fetchPublicIpAsync: function() {
         if (this._publicIPFetching) return;
         const now = GLib.get_monotonic_time() / 1000000;
-        if (this._publicIP && (now - this._publicIPFetchedAt) < PUBLIC_IP_TTL_SEC) return;
+        const haveAny = this._publicIPv4 || this._publicIPv6;
+        if (haveAny && (now - this._publicIPFetchedAt) < PUBLIC_IP_TTL_SEC) return;
         this._publicIPFetching = true;
+        this._pendingIpFetches = 2;
+        this._fetchOnePublicIp("-4", "_publicIPv4");
+        this._fetchOnePublicIp("-6", "_publicIPv6");
+    },
+
+    _fetchOnePublicIp: function(flag, key) {
         try {
             const proc = Gio.Subprocess.new(
-                ["curl", "-s", "-m", "3", "https://ifconfig.me"],
+                ["curl", "-s", flag, "-m", "3", "https://ifconfig.me"],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             );
             proc.communicate_utf8_async(null, null, Lang.bind(this, function(p, res) {
-                this._publicIPFetching = false;
                 if (this._removed) return;
                 try {
                     const result = p.communicate_utf8_finish(res);
-                    const stdout = result[1] || "";
-                    const ip = stdout.trim();
-                    if (ip.length > 0 && ip.length <= 45 && /^[0-9a-f\.\:]+$/i.test(ip)) {
-                        this._publicIP = ip;
-                        this._publicIPFetchedAt = GLib.get_monotonic_time() / 1000000;
-                        if (this._labels && this._labels.publicIp) {
-                            this._labels.publicIp.set_text("Public: " + this._publicIP);
-                        }
+                    const stdout = (result[1] || "").trim();
+                    if (stdout.length > 0 && stdout.length <= 45 &&
+                        /^[0-9a-f\.\:]+$/i.test(stdout)) {
+                        this[key] = stdout;
+                    } else {
+                        this[key] = null;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    this[key] = null;
+                }
+                this._onPublicIpFetchDone();
             }));
         } catch (e) {
-            this._publicIPFetching = false;
+            this[key] = null;
+            this._onPublicIpFetchDone();
         }
+    },
+
+    _onPublicIpFetchDone: function() {
+        if (--this._pendingIpFetches > 0) return;
+        this._publicIPFetching = false;
+        this._publicIPFetchedAt = GLib.get_monotonic_time() / 1000000;
+        this._refreshPublicIpLabel();
+    },
+
+    _refreshPublicIpLabel: function() {
+        if (!this._labels || !this._labels.publicIp) return;
+        const parts = [];
+        if (this._publicIPv4) parts.push("v4 " + this._publicIPv4);
+        if (this._publicIPv6) parts.push("v6 " + this._publicIPv6);
+        let text;
+        if (parts.length) {
+            text = "Public: " + parts.join("  ·  ");
+        } else if (this._publicIPFetching) {
+            text = "Public: fetching…";
+        } else {
+            text = "Public: unavailable";
+        }
+        this._labels.publicIp.set_text(text);
     },
 
     // ------------- formatting -------------
@@ -621,7 +654,7 @@ SysInfoDesklet.prototype = {
 
         if (on.has("ip-public") && this._labels.publicIp) {
             this._fetchPublicIpAsync();
-            this._labels.publicIp.set_text("Public: " + (this._publicIP || "fetching…"));
+            this._refreshPublicIpLabel();
         }
 
         this._repaintGraphs();
