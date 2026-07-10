@@ -72,6 +72,8 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "font-size",       "fontSize",      onStyle);
         this.settings.bindProperty(b, "theme-mode",      "themeMode",     onStyle);
         this.settings.bindProperty(b, "bg-opacity",      "bgOpacity",     onStyle);
+        this.settings.bindProperty(b, "border-width",    "borderWidth",   onStyle);
+        this.settings.bindProperty(b, "border-color",    "borderColor",   onStyle);
 
         this.settings.bindProperty(b, "fetch-public-ip", "fetchPublicIp", onSection);
         this.settings.bindProperty(b, "sections-list",   "sectionsList",  onSection);
@@ -114,10 +116,15 @@ SysInfoDesklet.prototype = {
         const fg = dark ? "#eeeeee" : "#222222";
         const titleColor = dark ? "#62a0ea" : "#1a5fb4";
         const fs = this.fontSize || 12;
+        const bw = Math.max(0, Math.min(10, this.borderWidth || 0));
+        const border = bw > 0
+            ? "border: " + bw + "px solid " + (this.borderColor || "rgba(255,255,255,0.35)") + ";"
+            : "";
         this._container.set_style(
             "background-color: " + bg + ";" +
             "color: " + fg + ";" +
             "font-size: " + fs + "px;" +
+            border +
             "border-radius: 10px;" +
             "padding: 14px 18px;"
         );

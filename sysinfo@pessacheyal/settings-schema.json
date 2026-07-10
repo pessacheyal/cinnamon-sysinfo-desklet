@@ -11,7 +11,7 @@
         "general-appearance": {
             "type": "section",
             "title": "Appearance & refresh",
-            "keys": ["refresh", "font-size", "theme-mode", "bg-opacity"]
+            "keys": ["refresh", "font-size", "theme-mode", "bg-opacity", "border-width", "border-color"]
         },
 
         "sections": {
@@ -67,6 +67,18 @@
         "units": "%",
         "description": "Background opacity",
         "tooltip": "0 = fully transparent, 100 = fully opaque"
+    },
+    "border-width": {
+        "type": "spinbutton",
+        "default": 0, "min": 0, "max": 10, "step": 1,
+        "units": "px",
+        "description": "Border width",
+        "tooltip": "Thickness of the outline around the desklet (0 = no border)"
+    },
+    "border-color": {
+        "type": "colorchooser",
+        "default": "rgba(255,255,255,0.35)",
+        "description": "Border color"
     },
 
     "fetch-public-ip": {
