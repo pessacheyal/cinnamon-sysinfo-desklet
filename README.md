@@ -24,21 +24,33 @@ The desklet reads directly from `/proc` and `/sys` — no external daemons. Only
 - Public-IP lookup on the IP row (opt-in)
 - Sparkline graphs: on/off, width, height, history length (samples), and line color
 
-## Install
+## Install / upgrade
 
 ```bash
 git clone https://github.com/pessacheyal/cinnamon-sysinfo-desklet.git
-mkdir -p ~/.local/share/cinnamon/desklets
-cp -r cinnamon-sysinfo-desklet/sysinfo@pessacheyal ~/.local/share/cinnamon/desklets/
+cd cinnamon-sysinfo-desklet
+./install.sh
 ```
 
-Then:
+`install.sh` copies the desklet into `~/.local/share/cinnamon/desklets/` and asks Cinnamon to reload. It works the same for a fresh install and an upgrade — your saved settings under `~/.config/cinnamon/spices/sysinfo@pessacheyal/` are left alone. To upgrade later:
 
-1. Open **Desklets** (right-click desktop → "Add desklets to desktop", or run `cinnamon-settings desklets`).
-2. Find **System Info** in the list, click **+ Add to desktop**.
-3. Right-click the desklet on your desktop → **Configure...** to tune settings.
+```bash
+git pull
+./install.sh
+```
 
-To pick up code changes after editing files, restart Cinnamon (`Alt+F2`, type `r`, Enter).
+Pass `--no-reload` to skip the Cinnamon-restart step (e.g., when running over SSH). After a fresh install, right-click the desktop → **Add desklets to desktop** → **System Info** → **+ Add to desktop**.
+
+<details>
+<summary>Manual install (if you prefer no script)</summary>
+
+```bash
+mkdir -p ~/.local/share/cinnamon/desklets
+cp -r sysinfo@pessacheyal ~/.local/share/cinnamon/desklets/
+# Alt+F2 → r → Enter to reload Cinnamon
+```
+
+</details>
 
 ## Tested on
 
