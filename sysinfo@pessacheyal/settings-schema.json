@@ -106,6 +106,7 @@
                 "title": "Section",
                 "type": "string",
                 "expand-width": true,
+                "default": "clock",
                 "options": {
                     "Time & date":             "clock",
                     "CPU + temperature":       "cpu",
