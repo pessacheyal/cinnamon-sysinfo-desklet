@@ -13,6 +13,7 @@ const DARK_THEME_PATTERN = /dark|noir|black|nord|dracula|mint-y-d|arc-dark|adwai
 
 // Section key → { line: label key stored on this._labels, graph: true|false }
 const SECTION_MAP = {
+    "clock":          { line: "clock",     graph: false },
     "cpu":            { line: "cpu",       graph: true  },
     "mem":            { line: "mem",       graph: true  },
     "swap":           { line: "swap",      graph: false },
@@ -25,6 +26,8 @@ const SECTION_MAP = {
     "ip-local":       { line: "localIp",   graph: false },
     "ip-public":      { line: "publicIp",  graph: false }
 };
+
+const DEFAULT_CLOCK_FORMAT = "%H:%M:%S %d-%m-%Y";
 
 function SysInfoDesklet(metadata, desklet_id) {
     this._init(metadata, desklet_id);
@@ -74,6 +77,7 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "bg-opacity",      "bgOpacity",     onStyle);
         this.settings.bindProperty(b, "border-width",    "borderWidth",   onStyle);
         this.settings.bindProperty(b, "border-color",    "borderColor",   onStyle);
+        this.settings.bindProperty(b, "clock-format",    "clockFormat",   onSection);
 
         this.settings.bindProperty(b, "fetch-public-ip", "fetchPublicIp", onSection);
         this.settings.bindProperty(b, "sections-list",   "sectionsList",  onSection);
@@ -538,6 +542,16 @@ SysInfoDesklet.prototype = {
     _update: function() {
         if (this._removed || !this._labels) return;
         const on = this._enabledSet;
+
+        if (on.has("clock") && this._labels.clock) {
+            let text = "";
+            try {
+                const fmt = this.clockFormat || DEFAULT_CLOCK_FORMAT;
+                const dt = GLib.DateTime.new_now_local();
+                text = dt.format(fmt) || dt.format(DEFAULT_CLOCK_FORMAT) || "";
+            } catch (e) {}
+            this._labels.clock.set_text(text);
+        }
 
         if (on.has("cpu")) {
             const cpu = this._getCpu();

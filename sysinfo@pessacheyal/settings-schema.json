@@ -6,12 +6,17 @@
         "general": {
             "type": "page",
             "title": "General",
-            "sections": ["general-appearance"]
+            "sections": ["general-appearance", "general-clock"]
         },
         "general-appearance": {
             "type": "section",
             "title": "Appearance & refresh",
             "keys": ["refresh", "font-size", "theme-mode", "bg-opacity", "border-width", "border-color"]
+        },
+        "general-clock": {
+            "type": "section",
+            "title": "Time & date",
+            "keys": ["clock-format"]
         },
 
         "sections": {
@@ -80,6 +85,12 @@
         "default": "rgba(255,255,255,0.35)",
         "description": "Border color"
     },
+    "clock-format": {
+        "type": "entry",
+        "default": "%H:%M:%S %d-%m-%Y",
+        "description": "Time & date format",
+        "tooltip": "strftime-style format string (e.g. %H:%M:%S %d-%m-%Y, %A %B %e, %I:%M %p, %F %T)"
+    },
 
     "fetch-public-ip": {
         "type": "generic",
@@ -96,6 +107,7 @@
                 "type": "string",
                 "expand-width": true,
                 "options": {
+                    "Time & date":             "clock",
                     "CPU + temperature":       "cpu",
                     "RAM":                     "mem",
                     "Swap":                    "swap",
@@ -118,6 +130,7 @@
             }
         ],
         "default": [
+            { "section": "clock",           "enabled": true  },
             { "section": "cpu",             "enabled": true  },
             { "section": "mem",             "enabled": true  },
             { "section": "swap",            "enabled": true  },
