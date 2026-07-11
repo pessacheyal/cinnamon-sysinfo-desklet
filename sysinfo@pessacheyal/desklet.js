@@ -591,7 +591,7 @@ SysInfoDesklet.prototype = {
 
     // ------------- command section -------------
     _cmdKey: function(row) {
-        return row.section + " " + row.command;
+        return row.section + " " + row.command;
     },
 
     _maybeRunCommand: function(row) {
