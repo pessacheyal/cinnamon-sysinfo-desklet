@@ -11,8 +11,8 @@ const HISTORY_MAX_CAP = 240;
 const PUBLIC_IP_TTL_SEC = 300;
 const DARK_THEME_PATTERN = /dark|noir|black|nord|dracula|mint-y-d|arc-dark|adwaita-dark/;
 
-// Section key → { line: label key stored on this._labels, graph: true|false }
 const SECTION_MAP = {
+    "hostname":       { line: "hostname",  graph: false },
     "clock":          { line: "clock",     graph: false },
     "cpu":            { line: "cpu",       graph: true  },
     "mem":            { line: "mem",       graph: true  },
@@ -27,7 +27,42 @@ const SECTION_MAP = {
     "ip-public":      { line: "publicIp",  graph: false }
 };
 
+// Default label prefix per section. User can override via the "label"
+// column in the sections list. For "hostname", the label is a full-text
+// override (not a prefix) so people can rewrite "System Info: <host>".
+const DEFAULT_LABELS = {
+    "hostname":       "",
+    "clock":          "",
+    "cpu":            "CPU: ",
+    "mem":            "RAM: ",
+    "swap":           "Swap: ",
+    "disk":           "Disk: ",
+    "uptime":         "Uptime: ",
+    "loadavg":        "Load: ",
+    "battery":        "Battery: ",
+    "network":        "Net: ",
+    "network-ifaces": "",
+    "ip-local":       "Local: ",
+    "ip-public":      ""
+};
+
 const DEFAULT_CLOCK_FORMAT = "%H:%M:%S %d-%m-%Y";
+
+const DEFAULT_SECTIONS_LIST = [
+    { section: "hostname",       enabled: true,  label: "", color: "", size: 0 },
+    { section: "clock",          enabled: true,  label: "", color: "", size: 0 },
+    { section: "cpu",            enabled: true,  label: "", color: "", size: 0 },
+    { section: "mem",            enabled: true,  label: "", color: "", size: 0 },
+    { section: "swap",           enabled: true,  label: "", color: "", size: 0 },
+    { section: "disk",           enabled: true,  label: "", color: "", size: 0 },
+    { section: "uptime",         enabled: true,  label: "", color: "", size: 0 },
+    { section: "loadavg",        enabled: true,  label: "", color: "", size: 0 },
+    { section: "battery",        enabled: true,  label: "", color: "", size: 0 },
+    { section: "network",        enabled: true,  label: "", color: "", size: 0 },
+    { section: "network-ifaces", enabled: false, label: "", color: "", size: 0 },
+    { section: "ip-local",       enabled: true,  label: "", color: "", size: 0 },
+    { section: "ip-public",      enabled: false, label: "", color: "", size: 0 }
+];
 
 function SysInfoDesklet(metadata, desklet_id) {
     this._init(metadata, desklet_id);
@@ -53,6 +88,7 @@ SysInfoDesklet.prototype = {
         this._pendingIpFetches = 0;
         this._enabledSet = new Set();
         this._orderedSections = [];
+        this._sectionStyle = {};
 
         this._bindSettings(desklet_id);
         this._bindTheme();
@@ -118,7 +154,6 @@ SysInfoDesklet.prototype = {
             ? "rgba(0,0,0," + opacity.toFixed(2) + ")"
             : "rgba(255,255,255," + opacity.toFixed(2) + ")";
         const fg = dark ? "#eeeeee" : "#222222";
-        const titleColor = dark ? "#62a0ea" : "#1a5fb4";
         const fs = this.fontSize || 12;
         const bw = Math.max(0, Math.min(10, this.borderWidth || 0));
         const border = bw > 0
@@ -132,14 +167,6 @@ SysInfoDesklet.prototype = {
             "border-radius: 10px;" +
             "padding: 14px 18px;"
         );
-        if (this._title) {
-            this._title.set_style(
-                "color: " + titleColor + ";" +
-                "font-weight: bold;" +
-                "font-size: " + (fs + 2) + "px;" +
-                "padding-bottom: 6px;"
-            );
-        }
         this._repaintGraphs();
     },
 
@@ -172,7 +199,21 @@ SysInfoDesklet.prototype = {
     _computeSectionsFromList: function() {
         this._orderedSections = [];
         this._enabledSet = new Set();
+        this._sectionStyle = {};
         const list = Array.isArray(this.sectionsList) ? this.sectionsList : [];
+
+        const push = Lang.bind(this, function(key, style) {
+            if (this._enabledSet.has(key)) return;
+            if (!SECTION_MAP[key]) return;
+            this._enabledSet.add(key);
+            this._orderedSections.push(key);
+            this._sectionStyle[key] = {
+                label: (style && style.label) || "",
+                color: (style && style.color) || "",
+                size:  (style && style.size)  || 0
+            };
+        });
+
         for (let i = 0; i < list.length; i++) {
             const row = list[i];
             if (!row || !row.section) continue;
@@ -181,22 +222,28 @@ SysInfoDesklet.prototype = {
             // Legacy migration: a saved "ip" row becomes ip-local (and ip-public if
             // the user previously had fetch-public-ip enabled).
             if (row.section === "ip") {
-                if (!this._enabledSet.has("ip-local")) {
-                    this._enabledSet.add("ip-local");
-                    this._orderedSections.push("ip-local");
-                }
-                if (this.fetchPublicIp && !this._enabledSet.has("ip-public")) {
-                    this._enabledSet.add("ip-public");
-                    this._orderedSections.push("ip-public");
-                }
+                push("ip-local", row);
+                if (this.fetchPublicIp) push("ip-public", row);
                 continue;
             }
 
-            if (!SECTION_MAP[row.section]) continue;
-            if (this._enabledSet.has(row.section)) continue;
-            this._enabledSet.add(row.section);
-            this._orderedSections.push(row.section);
+            push(row.section, row);
         }
+    },
+
+    _styleStrFor: function(sectionKey) {
+        const s = this._sectionStyle[sectionKey];
+        if (!s) return "";
+        const parts = [];
+        if (s.color) parts.push("color: " + s.color);
+        if (s.size && s.size > 0) parts.push("font-size: " + s.size + "px");
+        return parts.length ? parts.join(";") + ";" : "";
+    },
+
+    _labelPrefix: function(sectionKey) {
+        const s = this._sectionStyle[sectionKey];
+        if (s && s.label) return s.label;
+        return DEFAULT_LABELS[sectionKey] || "";
     },
 
     _buildUI: function() {
@@ -204,40 +251,37 @@ SysInfoDesklet.prototype = {
 
         this._labels = {};
         this._graphs = {};
+        this._title = null;
         this._container = new St.BoxLayout({ vertical: true, style_class: "sysinfo-container" });
-
-        const host = GLib.get_host_name();
-        this._title = new St.Label({
-            text: host ? "System Info [" + host + "]" : "System Info",
-            style_class: "sysinfo-title"
-        });
-        this._container.add(this._title);
 
         for (let i = 0; i < this._orderedSections.length; i++) {
             const key = this._orderedSections[i];
-            const map = SECTION_MAP[key];
-            this._addLine(map.line);
-            if (map.graph) this._addGraph(map.line);
+            this._addLine(key);
+            if (SECTION_MAP[key].graph) this._addGraph(key);
         }
 
         this.setContent(this._container);
     },
 
-    _addLine: function(key) {
+    _addLine: function(sectionKey) {
+        const lineKey = SECTION_MAP[sectionKey].line;
         const label = new St.Label({ style_class: "sysinfo-line" });
-        this._labels[key] = label;
+        const style = this._styleStrFor(sectionKey);
+        if (style) label.set_style(style);
+        this._labels[lineKey] = label;
         this._container.add(label);
     },
 
-    _addGraph: function(key) {
+    _addGraph: function(sectionKey) {
         if (!this.showGraphs) return;
+        const lineKey = SECTION_MAP[sectionKey].line;
         const area = new St.DrawingArea({ reactive: false });
         const w = Math.max(60, Math.min(500, this.graphWidth || 220));
         const h = Math.max(16, Math.min(100, this.graphHeight || 32));
         area.set_width(w);
         area.set_height(h);
-        area.connect("repaint", Lang.bind(this, function(a) { this._drawGraph(a, key); }));
-        this._graphs[key] = area;
+        area.connect("repaint", Lang.bind(this, function(a) { this._drawGraph(a, lineKey); }));
+        this._graphs[lineKey] = area;
         this._container.add(area);
     },
 
@@ -382,8 +426,6 @@ SysInfoDesklet.prototype = {
                 if (parts.length) return parts[0];
             }
         } catch (e) {}
-        // Fallback: `ip -4 -o addr show scope global` — works when `hostname -I` is
-        // empty (e.g. no DNS suffix set, or hostname package trimmed on server installs).
         try {
             const [ok, stdout] = GLib.spawn_command_line_sync("ip -4 -o addr show scope global");
             if (ok) {
@@ -442,16 +484,17 @@ SysInfoDesklet.prototype = {
 
     _refreshPublicIpLabel: function() {
         if (!this._labels || !this._labels.publicIp) return;
+        const prefix = this._labelPrefix("ip-public");
         const lines = [];
-        if (this._publicIPv4) lines.push("Public v4: " + this._publicIPv4);
-        if (this._publicIPv6) lines.push("Public v6: " + this._publicIPv6);
+        if (this._publicIPv4) lines.push(prefix + "Public v4: " + this._publicIPv4);
+        if (this._publicIPv6) lines.push(prefix + "Public v6: " + this._publicIPv6);
         let text;
         if (lines.length) {
             text = lines.join("\n");
         } else if (this._publicIPFetching) {
-            text = "Public: fetching…";
+            text = prefix + "Public: fetching…";
         } else {
-            text = "Public: unavailable";
+            text = prefix + "Public: unavailable";
         }
         this._labels.publicIp.set_text(text);
     },
@@ -538,10 +581,32 @@ SysInfoDesklet.prototype = {
         for (const k in this._graphs) this._graphs[k].queue_repaint();
     },
 
+    // ------------- settings-button callbacks -------------
+    _onApplyClicked: function() {
+        this._rebuildUI();
+    },
+
+    _onResetClicked: function() {
+        const defaults = JSON.parse(JSON.stringify(DEFAULT_SECTIONS_LIST));
+        try {
+            this.settings.setValue("sections-list", defaults);
+        } catch (e) {
+            // Best-effort: at least reflect defaults locally
+            this.sectionsList = defaults;
+            this._rebuildUI();
+        }
+    },
+
     // ------------- update loop -------------
     _update: function() {
         if (this._removed || !this._labels) return;
         const on = this._enabledSet;
+
+        if (on.has("hostname") && this._labels.hostname) {
+            const custom = this._sectionStyle.hostname && this._sectionStyle.hostname.label;
+            const host = GLib.get_host_name() || "";
+            this._labels.hostname.set_text(custom || host);
+        }
 
         if (on.has("clock") && this._labels.clock) {
             let text = "";
@@ -550,7 +615,7 @@ SysInfoDesklet.prototype = {
                 const dt = GLib.DateTime.new_now_local();
                 text = dt.format(fmt) || dt.format(DEFAULT_CLOCK_FORMAT) || "";
             } catch (e) {}
-            this._labels.clock.set_text(text);
+            this._labels.clock.set_text(this._labelPrefix("clock") + text);
         }
 
         if (on.has("cpu")) {
@@ -565,7 +630,7 @@ SysInfoDesklet.prototype = {
             const t = this._getCpuTemp();
             if (this._labels.cpu) {
                 this._labels.cpu.set_text(
-                    "CPU:  " + cpuPct.toFixed(1) + "%" +
+                    this._labelPrefix("cpu") + cpuPct.toFixed(1) + "%" +
                     (t !== null ? "   " + t.toFixed(0) + "°C" : "")
                 );
             }
@@ -577,7 +642,7 @@ SysInfoDesklet.prototype = {
         if (on.has("mem") && mem && mem.total > 0 && this._labels.mem) {
             const pct = 100 * mem.used / mem.total;
             this._labels.mem.set_text(
-                "RAM:  " + this._fmt(mem.used) + " / " + this._fmt(mem.total) +
+                this._labelPrefix("mem") + this._fmt(mem.used) + " / " + this._fmt(mem.total) +
                 "  (" + pct.toFixed(0) + "%)"
             );
             this._pushHistory("mem", pct);
@@ -586,11 +651,11 @@ SysInfoDesklet.prototype = {
             if (mem && mem.swapTotal > 0) {
                 const pct = 100 * mem.swapUsed / mem.swapTotal;
                 this._labels.swap.set_text(
-                    "Swap: " + this._fmt(mem.swapUsed) + " / " + this._fmt(mem.swapTotal) +
+                    this._labelPrefix("swap") + this._fmt(mem.swapUsed) + " / " + this._fmt(mem.swapTotal) +
                     "  (" + pct.toFixed(0) + "%)"
                 );
             } else {
-                this._labels.swap.set_text("Swap: none");
+                this._labels.swap.set_text(this._labelPrefix("swap") + "none");
             }
         }
 
@@ -599,7 +664,7 @@ SysInfoDesklet.prototype = {
             if (d && d.total > 0) {
                 const pct = 100 * d.used / d.total;
                 this._labels.disk.set_text(
-                    "Disk: " + this._fmt(d.used) + " / " + this._fmt(d.total) +
+                    this._labelPrefix("disk") + this._fmt(d.used) + " / " + this._fmt(d.total) +
                     "  (" + pct.toFixed(0) + "%)"
                 );
             }
@@ -607,14 +672,14 @@ SysInfoDesklet.prototype = {
 
         if (on.has("uptime") && this._labels.uptime) {
             const u = this._getUptime();
-            if (u !== null) this._labels.uptime.set_text("Uptime: " + this._fmtUptime(u));
+            if (u !== null) this._labels.uptime.set_text(this._labelPrefix("uptime") + this._fmtUptime(u));
         }
 
         if (on.has("loadavg") && this._labels.loadavg) {
             const la = this._getLoadAvg();
             if (la) {
                 this._labels.loadavg.set_text(
-                    "Load: " + la[0].toFixed(2) + "  " + la[1].toFixed(2) + "  " + la[2].toFixed(2)
+                    this._labelPrefix("loadavg") + la[0].toFixed(2) + "  " + la[1].toFixed(2) + "  " + la[2].toFixed(2)
                 );
             }
         }
@@ -625,10 +690,10 @@ SysInfoDesklet.prototype = {
                 const mark = bat.status === "Charging" ? " ⚡" :
                              bat.status === "Full"     ? " ✓"  : "";
                 this._labels.battery.set_text(
-                    "Battery: " + bat.capacity + "%  " + bat.status + mark
+                    this._labelPrefix("battery") + bat.capacity + "%  " + bat.status + mark
                 );
             } else {
-                this._labels.battery.set_text("Battery: N/A");
+                this._labels.battery.set_text(this._labelPrefix("battery") + "N/A");
             }
         }
 
@@ -642,7 +707,7 @@ SysInfoDesklet.prototype = {
                     const txRate = Math.max(0, (net.total.tx - this._prevNet.total.tx) / dt);
                     if (on.has("network") && this._labels.net) {
                         this._labels.net.set_text(
-                            "Net:  ↓ " + this._fmt(rxRate) + "/s  ↑ " + this._fmt(txRate) + "/s"
+                            this._labelPrefix("network") + "↓ " + this._fmt(rxRate) + "/s  ↑ " + this._fmt(txRate) + "/s"
                         );
                     }
                     const combined = rxRate + txRate;
@@ -651,26 +716,27 @@ SysInfoDesklet.prototype = {
 
                     if (on.has("network-ifaces") && this._labels.netIfaces) {
                         const lines = [];
+                        const prefix = this._labelPrefix("network-ifaces");
                         for (const iface in net.ifaces) {
                             const prev = this._prevNet.ifaces[iface];
                             if (!prev) continue;
                             const rr = Math.max(0, (net.ifaces[iface].rx - prev.rx) / dt);
                             const tr = Math.max(0, (net.ifaces[iface].tx - prev.tx) / dt);
                             if (rr + tr < 100) continue;
-                            lines.push("  " + iface + ": ↓ " + this._fmt(rr) + "/s  ↑ " + this._fmt(tr) + "/s");
+                            lines.push(prefix + iface + ": ↓ " + this._fmt(rr) + "/s  ↑ " + this._fmt(tr) + "/s");
                         }
-                        this._labels.netIfaces.set_text(lines.length ? lines.join("\n") : "  (all interfaces idle)");
+                        this._labels.netIfaces.set_text(lines.length ? lines.join("\n") : prefix + "(all interfaces idle)");
                     }
                 }
             } else if (on.has("network") && this._labels.net) {
-                this._labels.net.set_text("Net:  measuring...");
+                this._labels.net.set_text(this._labelPrefix("network") + "measuring...");
             }
             this._prevNet = net;
         }
 
         if (on.has("ip-local") && this._labels.localIp) {
             this._localIP = this._getLocalIp();
-            this._labels.localIp.set_text("Local:  " + (this._localIP || "unavailable"));
+            this._labels.localIp.set_text(this._labelPrefix("ip-local") + (this._localIP || "unavailable"));
         }
 
         if (on.has("ip-public") && this._labels.publicIp) {
