@@ -26,7 +26,7 @@
         },
         "sections-main": {
             "type": "section",
-            "title": "Sections to display (drag / reorder, per-row label / color / size)",
+            "title": "Sections to display",
             "keys": ["sections-list"]
         },
         "sections-actions": {
@@ -124,7 +124,9 @@
                     "Network throughput":      "network",
                     "Network (per interface)": "network-ifaces",
                     "Local IP address":        "ip-local",
-                    "Public IP address":       "ip-public"
+                    "Public IP address":       "ip-public",
+                    "Custom text":             "text",
+                    "Command output":          "command"
                 }
             },
             {
@@ -141,10 +143,39 @@
                 "default": ""
             },
             {
+                "id": "command",
+                "title": "Command (for Command rows)",
+                "type": "string",
+                "default": ""
+            },
+            {
+                "id": "interval",
+                "title": "Every (s)",
+                "type": "integer",
+                "default": 5,
+                "min": 1,
+                "max": 3600,
+                "step": 1,
+                "align": 0.5
+            },
+            {
                 "id": "color",
                 "title": "Color",
                 "type": "string",
-                "default": ""
+                "default": "",
+                "options": {
+                    "Theme default": "",
+                    "White":         "#ffffff",
+                    "Black":         "#000000",
+                    "Red":           "#e5484d",
+                    "Orange":        "#f76b15",
+                    "Yellow":        "#ffcb47",
+                    "Green":         "#30a46c",
+                    "Cyan":          "#05a2c2",
+                    "Blue":          "#3e63dd",
+                    "Purple":        "#8e4ec6",
+                    "Pink":          "#e93d82"
+                }
             },
             {
                 "id": "size",
@@ -155,22 +186,36 @@
                 "max": 72,
                 "step": 1,
                 "align": 0.5
+            },
+            {
+                "id": "bold",
+                "title": "Bold",
+                "type": "boolean",
+                "default": false,
+                "align": 0.5
+            },
+            {
+                "id": "italic",
+                "title": "Italic",
+                "type": "boolean",
+                "default": false,
+                "align": 0.5
             }
         ],
         "default": [
-            { "section": "hostname",        "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "clock",           "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "cpu",             "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "mem",             "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "swap",            "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "disk",            "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "uptime",          "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "loadavg",         "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "battery",         "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "network",         "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "network-ifaces",  "enabled": false, "label": "",        "color": "", "size": 0 },
-            { "section": "ip-local",        "enabled": true,  "label": "",        "color": "", "size": 0 },
-            { "section": "ip-public",       "enabled": false, "label": "",        "color": "", "size": 0 }
+            { "section": "hostname",       "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": true,  "italic": false },
+            { "section": "clock",          "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "cpu",            "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "mem",            "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "swap",           "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "disk",           "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "uptime",         "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "loadavg",        "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "battery",        "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "network",        "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "network-ifaces", "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "ip-local",       "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "ip-public",      "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false }
         ]
     },
 
@@ -184,7 +229,7 @@
         "type": "button",
         "description": "Reset sections to defaults",
         "callback": "_onResetClicked",
-        "tooltip": "Restore the built-in section order, enabled state, labels, colors, and sizes."
+        "tooltip": "Restore the built-in section order, enabled state, labels, colors, sizes, and styles."
     },
 
     "show-graphs":   { "type": "checkbox", "default": true, "description": "Show sparkline graphs" },

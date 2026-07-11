@@ -9,27 +9,33 @@ const Cairo = imports.cairo;
 
 const HISTORY_MAX_CAP = 240;
 const PUBLIC_IP_TTL_SEC = 300;
+const COMMAND_OUTPUT_MAX = 4000;
 const DARK_THEME_PATTERN = /dark|noir|black|nord|dracula|mint-y-d|arc-dark|adwaita-dark/;
 
+// section key → { hasGraph }.
+// (line-key mapping is gone in v1.7 — labels are keyed by row index so
+// duplicate sections work for text/command rows.)
 const SECTION_MAP = {
-    "hostname":       { line: "hostname",  graph: false },
-    "clock":          { line: "clock",     graph: false },
-    "cpu":            { line: "cpu",       graph: true  },
-    "mem":            { line: "mem",       graph: true  },
-    "swap":           { line: "swap",      graph: false },
-    "disk":           { line: "disk",      graph: false },
-    "uptime":         { line: "uptime",    graph: false },
-    "loadavg":        { line: "loadavg",   graph: false },
-    "battery":        { line: "battery",   graph: false },
-    "network":        { line: "net",       graph: true  },
-    "network-ifaces": { line: "netIfaces", graph: false },
-    "ip-local":       { line: "localIp",   graph: false },
-    "ip-public":      { line: "publicIp",  graph: false }
+    "hostname":       { hasGraph: false },
+    "clock":          { hasGraph: false },
+    "cpu":            { hasGraph: true,  histKey: "cpu" },
+    "mem":            { hasGraph: true,  histKey: "mem" },
+    "swap":           { hasGraph: false },
+    "disk":           { hasGraph: false },
+    "uptime":         { hasGraph: false },
+    "loadavg":        { hasGraph: false },
+    "battery":        { hasGraph: false },
+    "network":        { hasGraph: true,  histKey: "net" },
+    "network-ifaces": { hasGraph: false },
+    "ip-local":       { hasGraph: false },
+    "ip-public":      { hasGraph: false },
+    "text":           { hasGraph: false },
+    "command":        { hasGraph: false }
 };
 
-// Default label prefix per section. User can override via the "label"
-// column in the sections list. For "hostname", the label is a full-text
-// override (not a prefix) so people can rewrite "System Info: <host>".
+// Default label prefix for each section. The user's Custom label is
+// prepended on top of these (or overrides entirely when non-empty for
+// sections that have no useful built-in prefix).
 const DEFAULT_LABELS = {
     "hostname":       "",
     "clock":          "",
@@ -43,25 +49,27 @@ const DEFAULT_LABELS = {
     "network":        "Net: ",
     "network-ifaces": "",
     "ip-local":       "Local: ",
-    "ip-public":      ""
+    "ip-public":      "",
+    "text":           "",
+    "command":        ""
 };
 
 const DEFAULT_CLOCK_FORMAT = "%H:%M:%S %d-%m-%Y";
 
 const DEFAULT_SECTIONS_LIST = [
-    { section: "hostname",       enabled: true,  label: "", color: "", size: 0 },
-    { section: "clock",          enabled: true,  label: "", color: "", size: 0 },
-    { section: "cpu",            enabled: true,  label: "", color: "", size: 0 },
-    { section: "mem",            enabled: true,  label: "", color: "", size: 0 },
-    { section: "swap",           enabled: true,  label: "", color: "", size: 0 },
-    { section: "disk",           enabled: true,  label: "", color: "", size: 0 },
-    { section: "uptime",         enabled: true,  label: "", color: "", size: 0 },
-    { section: "loadavg",        enabled: true,  label: "", color: "", size: 0 },
-    { section: "battery",        enabled: true,  label: "", color: "", size: 0 },
-    { section: "network",        enabled: true,  label: "", color: "", size: 0 },
-    { section: "network-ifaces", enabled: false, label: "", color: "", size: 0 },
-    { section: "ip-local",       enabled: true,  label: "", color: "", size: 0 },
-    { section: "ip-public",      enabled: false, label: "", color: "", size: 0 }
+    { section: "hostname",       enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: true,  italic: false },
+    { section: "clock",          enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "cpu",            enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "mem",            enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "swap",           enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "disk",           enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "uptime",         enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "loadavg",        enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "battery",        enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "network",        enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "network-ifaces", enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "ip-local",       enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "ip-public",      enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false }
 ];
 
 function SysInfoDesklet(metadata, desklet_id) {
@@ -86,9 +94,10 @@ SysInfoDesklet.prototype = {
         this._publicIPFetchedAt = 0;
         this._publicIPFetching = false;
         this._pendingIpFetches = 0;
-        this._enabledSet = new Set();
-        this._orderedSections = [];
-        this._sectionStyle = {};
+        this._orderedRows = [];
+        this._labels = {};
+        this._graphs = {};
+        this._commandState = {};
 
         this._bindSettings(desklet_id);
         this._bindTheme();
@@ -196,92 +205,98 @@ SysInfoDesklet.prototype = {
         this._update();
     },
 
-    _computeSectionsFromList: function() {
-        this._orderedSections = [];
-        this._enabledSet = new Set();
-        this._sectionStyle = {};
+    _normalizeRow: function(raw) {
+        return {
+            section:  raw.section,
+            enabled:  raw.enabled !== false,
+            label:    raw.label   || "",
+            command:  raw.command || "",
+            interval: raw.interval > 0 ? raw.interval : 5,
+            color:    raw.color   || "",
+            size:     raw.size    || 0,
+            bold:     raw.bold    === true,
+            italic:   raw.italic  === true
+        };
+    },
+
+    _computeOrderedRows: function() {
+        this._orderedRows = [];
         const list = Array.isArray(this.sectionsList) ? this.sectionsList : [];
-
-        const push = Lang.bind(this, function(key, style) {
-            if (this._enabledSet.has(key)) return;
-            if (!SECTION_MAP[key]) return;
-            this._enabledSet.add(key);
-            this._orderedSections.push(key);
-            this._sectionStyle[key] = {
-                label: (style && style.label) || "",
-                color: (style && style.color) || "",
-                size:  (style && style.size)  || 0
-            };
-        });
-
         for (let i = 0; i < list.length; i++) {
             const row = list[i];
             if (!row || !row.section) continue;
             if (row.enabled === false) continue;
 
-            // Legacy migration: a saved "ip" row becomes ip-local (and ip-public if
-            // the user previously had fetch-public-ip enabled).
+            // Legacy migration for pre-1.3 combined "ip" entry.
             if (row.section === "ip") {
-                push("ip-local", row);
-                if (this.fetchPublicIp) push("ip-public", row);
+                this._orderedRows.push(this._normalizeRow({ section: "ip-local", label: row.label, color: row.color, size: row.size, bold: row.bold, italic: row.italic }));
+                if (this.fetchPublicIp) {
+                    this._orderedRows.push(this._normalizeRow({ section: "ip-public", label: row.label, color: row.color, size: row.size, bold: row.bold, italic: row.italic }));
+                }
                 continue;
             }
 
-            push(row.section, row);
+            if (!SECTION_MAP[row.section]) continue;
+            this._orderedRows.push(this._normalizeRow(row));
         }
     },
 
-    _styleStrFor: function(sectionKey) {
-        const s = this._sectionStyle[sectionKey];
-        if (!s) return "";
+    _rowStyleStr: function(row) {
         const parts = [];
-        if (s.color) parts.push("color: " + s.color);
-        if (s.size && s.size > 0) parts.push("font-size: " + s.size + "px");
+        if (row.color) parts.push("color: " + row.color);
+        if (row.size && row.size > 0) parts.push("font-size: " + row.size + "px");
+        if (row.bold) parts.push("font-weight: bold");
+        if (row.italic) parts.push("font-style: italic");
         return parts.length ? parts.join(";") + ";" : "";
     },
 
-    _labelPrefix: function(sectionKey) {
-        const s = this._sectionStyle[sectionKey];
-        if (s && s.label) return s.label;
-        return DEFAULT_LABELS[sectionKey] || "";
+    _prefix: function(row) {
+        return row.label || DEFAULT_LABELS[row.section] || "";
+    },
+
+    _applyPrefix: function(prefix, text) {
+        if (!prefix) return text || "";
+        if (!text) return prefix;
+        if (text.indexOf("\n") === -1) return prefix + text;
+        return text.split("\n").map(function(l) { return prefix + l; }).join("\n");
     },
 
     _buildUI: function() {
-        this._computeSectionsFromList();
+        this._computeOrderedRows();
 
         this._labels = {};
         this._graphs = {};
-        this._title = null;
+        // Preserve existing command-state so cached output survives rebuilds.
+        // (keys are section+"@"+command, not row indices, since indices shift.)
         this._container = new St.BoxLayout({ vertical: true, style_class: "sysinfo-container" });
 
-        for (let i = 0; i < this._orderedSections.length; i++) {
-            const key = this._orderedSections[i];
-            this._addLine(key);
-            if (SECTION_MAP[key].graph) this._addGraph(key);
+        for (let i = 0; i < this._orderedRows.length; i++) {
+            const row = this._orderedRows[i];
+            this._addLine(i, row);
+            if (SECTION_MAP[row.section].hasGraph) this._addGraph(i, row);
         }
 
         this.setContent(this._container);
     },
 
-    _addLine: function(sectionKey) {
-        const lineKey = SECTION_MAP[sectionKey].line;
+    _addLine: function(index, row) {
         const label = new St.Label({ style_class: "sysinfo-line" });
-        const style = this._styleStrFor(sectionKey);
+        const style = this._rowStyleStr(row);
         if (style) label.set_style(style);
-        this._labels[lineKey] = label;
+        this._labels[index] = label;
         this._container.add(label);
     },
 
-    _addGraph: function(sectionKey) {
+    _addGraph: function(index, row) {
         if (!this.showGraphs) return;
-        const lineKey = SECTION_MAP[sectionKey].line;
+        const histKey = SECTION_MAP[row.section].histKey;
         const area = new St.DrawingArea({ reactive: false });
         const w = Math.max(60, Math.min(500, this.graphWidth || 220));
         const h = Math.max(16, Math.min(100, this.graphHeight || 32));
         area.set_width(w);
         area.set_height(h);
-        area.connect("repaint", Lang.bind(this, function(a) { this._drawGraph(a, lineKey); }));
-        this._graphs[lineKey] = area;
+        area.connect("repaint", Lang.bind(this, function(a) { this._drawGraph(a, histKey); }));
+        this._graphs[index] = area;
         this._container.add(area);
     },
 
@@ -479,24 +494,17 @@ SysInfoDesklet.prototype = {
         if (--this._pendingIpFetches > 0) return;
         this._publicIPFetching = false;
         this._publicIPFetchedAt = GLib.get_monotonic_time() / 1000000;
-        this._refreshPublicIpLabel();
+        // Refresh any Public IP labels on the next tick (or now if labels exist).
+        this._update();
     },
 
-    _refreshPublicIpLabel: function() {
-        if (!this._labels || !this._labels.publicIp) return;
-        const prefix = this._labelPrefix("ip-public");
+    _publicIpText: function() {
         const lines = [];
-        if (this._publicIPv4) lines.push(prefix + "Public v4: " + this._publicIPv4);
-        if (this._publicIPv6) lines.push(prefix + "Public v6: " + this._publicIPv6);
-        let text;
-        if (lines.length) {
-            text = lines.join("\n");
-        } else if (this._publicIPFetching) {
-            text = prefix + "Public: fetching…";
-        } else {
-            text = prefix + "Public: unavailable";
-        }
-        this._labels.publicIp.set_text(text);
+        if (this._publicIPv4) lines.push("Public v4: " + this._publicIPv4);
+        if (this._publicIPv6) lines.push("Public v6: " + this._publicIPv6);
+        if (lines.length) return lines.join("\n");
+        if (this._publicIPFetching) return "Public: fetching…";
+        return "Public: unavailable";
     },
 
     // ------------- formatting -------------
@@ -536,7 +544,7 @@ SysInfoDesklet.prototype = {
         ];
     },
 
-    _drawGraph: function(area, key) {
+    _drawGraph: function(area, histKey) {
         const size = area.get_surface_size();
         const w = size[0], h = size[1];
         const cr = area.get_context();
@@ -546,11 +554,11 @@ SysInfoDesklet.prototype = {
         cr.rectangle(0, 0, w, h);
         cr.fill();
 
-        const arr = this._history[key];
+        const arr = this._history[histKey];
         if (!arr || arr.length < 2) return;
 
         let maxV = 100;
-        if (key === "net") maxV = Math.max(1, this._netMax);
+        if (histKey === "net") maxV = Math.max(1, this._netMax);
 
         const color = this._parseColor(this.graphColor);
         const r = color[0], g = color[1], b = color[2], a = color[3];
@@ -581,6 +589,64 @@ SysInfoDesklet.prototype = {
         for (const k in this._graphs) this._graphs[k].queue_repaint();
     },
 
+    // ------------- command section -------------
+    _cmdKey: function(row) {
+        return row.section + " " + row.command;
+    },
+
+    _maybeRunCommand: function(row) {
+        const cmd = (row.command || "").trim();
+        if (!cmd) return "";
+        const key = this._cmdKey(row);
+        const interval = Math.max(1, row.interval || 5);
+        const now = GLib.get_monotonic_time() / 1000000;
+        let state = this._commandState[key];
+        if (!state) {
+            state = { output: "", lastRun: 0, running: false };
+            this._commandState[key] = state;
+        }
+        if (state.running) return state.output;
+        if (state.lastRun !== 0 && (now - state.lastRun) < interval) return state.output;
+        state.running = true;
+        state.lastRun = now;
+        try {
+            const proc = Gio.Subprocess.new(
+                ["sh", "-c", cmd],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE
+            );
+            proc.communicate_utf8_async(null, null, Lang.bind(this, function(p, res) {
+                state.running = false;
+                if (this._removed) return;
+                try {
+                    const result = p.communicate_utf8_finish(res);
+                    let out = (result[1] || "").replace(/\n+$/, "");
+                    if (out.length > COMMAND_OUTPUT_MAX) out = out.slice(0, COMMAND_OUTPUT_MAX) + "…";
+                    state.output = out;
+                } catch (e) {
+                    state.output = "[error]";
+                }
+                // Repaint any label bound to this command
+                this._refreshCommandLabels(key);
+            }));
+        } catch (e) {
+            state.running = false;
+            state.output = "[error]";
+        }
+        return state.output;
+    },
+
+    _refreshCommandLabels: function(key) {
+        if (!this._labels) return;
+        for (let i = 0; i < this._orderedRows.length; i++) {
+            const row = this._orderedRows[i];
+            if (row.section !== "command") continue;
+            if (this._cmdKey(row) !== key) continue;
+            const state = this._commandState[key];
+            if (!this._labels[i]) continue;
+            this._labels[i].set_text(this._applyPrefix(this._prefix(row), state ? state.output : ""));
+        }
+    },
+
     // ------------- settings-button callbacks -------------
     _onApplyClicked: function() {
         this._rebuildUI();
@@ -591,34 +657,35 @@ SysInfoDesklet.prototype = {
         try {
             this.settings.setValue("sections-list", defaults);
         } catch (e) {
-            // Best-effort: at least reflect defaults locally
             this.sectionsList = defaults;
             this._rebuildUI();
         }
     },
 
-    // ------------- update loop -------------
-    _update: function() {
-        if (this._removed || !this._labels) return;
-        const on = this._enabledSet;
+    // ------------- per-section value computation -------------
+    // Each function returns the raw text (with no user-prefix). Values are
+    // shared across rows so a single tick reads each source at most once.
 
-        if (on.has("hostname") && this._labels.hostname) {
-            const custom = this._sectionStyle.hostname && this._sectionStyle.hostname.label;
-            const host = GLib.get_host_name() || "";
-            this._labels.hostname.set_text(custom || host);
-        }
+    _computeValueForTick: function() {
+        const rows = this._orderedRows;
+        const used = new Set();
+        for (let i = 0; i < rows.length; i++) used.add(rows[i].section);
 
-        if (on.has("clock") && this._labels.clock) {
+        const v = {};
+
+        if (used.has("hostname")) v.hostname = GLib.get_host_name() || "";
+
+        if (used.has("clock")) {
             let text = "";
             try {
                 const fmt = this.clockFormat || DEFAULT_CLOCK_FORMAT;
                 const dt = GLib.DateTime.new_now_local();
                 text = dt.format(fmt) || dt.format(DEFAULT_CLOCK_FORMAT) || "";
             } catch (e) {}
-            this._labels.clock.set_text(this._labelPrefix("clock") + text);
+            v.clock = text;
         }
 
-        if (on.has("cpu")) {
+        if (used.has("cpu")) {
             const cpu = this._getCpu();
             let cpuPct = 0;
             if (cpu && this._prevCpu) {
@@ -628,120 +695,125 @@ SysInfoDesklet.prototype = {
             }
             this._prevCpu = cpu;
             const t = this._getCpuTemp();
-            if (this._labels.cpu) {
-                this._labels.cpu.set_text(
-                    this._labelPrefix("cpu") + cpuPct.toFixed(1) + "%" +
-                    (t !== null ? "   " + t.toFixed(0) + "°C" : "")
-                );
-            }
             this._pushHistory("cpu", cpuPct);
+            v.cpu = cpuPct.toFixed(1) + "%" + (t !== null ? "   " + t.toFixed(0) + "°C" : "");
         }
 
-        const needMem = on.has("mem") || on.has("swap");
+        const needMem = used.has("mem") || used.has("swap");
         const mem = needMem ? this._getMem() : null;
-        if (on.has("mem") && mem && mem.total > 0 && this._labels.mem) {
+        if (used.has("mem") && mem && mem.total > 0) {
             const pct = 100 * mem.used / mem.total;
-            this._labels.mem.set_text(
-                this._labelPrefix("mem") + this._fmt(mem.used) + " / " + this._fmt(mem.total) +
-                "  (" + pct.toFixed(0) + "%)"
-            );
+            v.mem = this._fmt(mem.used) + " / " + this._fmt(mem.total) + "  (" + pct.toFixed(0) + "%)";
             this._pushHistory("mem", pct);
         }
-        if (on.has("swap") && this._labels.swap) {
+        if (used.has("swap")) {
             if (mem && mem.swapTotal > 0) {
                 const pct = 100 * mem.swapUsed / mem.swapTotal;
-                this._labels.swap.set_text(
-                    this._labelPrefix("swap") + this._fmt(mem.swapUsed) + " / " + this._fmt(mem.swapTotal) +
-                    "  (" + pct.toFixed(0) + "%)"
-                );
+                v.swap = this._fmt(mem.swapUsed) + " / " + this._fmt(mem.swapTotal) + "  (" + pct.toFixed(0) + "%)";
             } else {
-                this._labels.swap.set_text(this._labelPrefix("swap") + "none");
+                v.swap = "none";
             }
         }
 
-        if (on.has("disk") && this._labels.disk) {
+        if (used.has("disk")) {
             const d = this._getDisk();
             if (d && d.total > 0) {
                 const pct = 100 * d.used / d.total;
-                this._labels.disk.set_text(
-                    this._labelPrefix("disk") + this._fmt(d.used) + " / " + this._fmt(d.total) +
-                    "  (" + pct.toFixed(0) + "%)"
-                );
+                v.disk = this._fmt(d.used) + " / " + this._fmt(d.total) + "  (" + pct.toFixed(0) + "%)";
             }
         }
 
-        if (on.has("uptime") && this._labels.uptime) {
+        if (used.has("uptime")) {
             const u = this._getUptime();
-            if (u !== null) this._labels.uptime.set_text(this._labelPrefix("uptime") + this._fmtUptime(u));
+            if (u !== null) v.uptime = this._fmtUptime(u);
         }
 
-        if (on.has("loadavg") && this._labels.loadavg) {
+        if (used.has("loadavg")) {
             const la = this._getLoadAvg();
-            if (la) {
-                this._labels.loadavg.set_text(
-                    this._labelPrefix("loadavg") + la[0].toFixed(2) + "  " + la[1].toFixed(2) + "  " + la[2].toFixed(2)
-                );
-            }
+            if (la) v.loadavg = la[0].toFixed(2) + "  " + la[1].toFixed(2) + "  " + la[2].toFixed(2);
         }
 
-        if (on.has("battery") && this._labels.battery) {
+        if (used.has("battery")) {
             const bat = this._getBattery();
             if (bat) {
                 const mark = bat.status === "Charging" ? " ⚡" :
                              bat.status === "Full"     ? " ✓"  : "";
-                this._labels.battery.set_text(
-                    this._labelPrefix("battery") + bat.capacity + "%  " + bat.status + mark
-                );
+                v.battery = bat.capacity + "%  " + bat.status + mark;
             } else {
-                this._labels.battery.set_text(this._labelPrefix("battery") + "N/A");
+                v.battery = "N/A";
             }
         }
 
-        const needNet = on.has("network") || on.has("network-ifaces");
-        if (needNet) {
+        if (used.has("network") || used.has("network-ifaces")) {
             const net = this._getNet();
             if (net && this._prevNet) {
                 const dt = net.time - this._prevNet.time;
                 if (dt > 0) {
                     const rxRate = Math.max(0, (net.total.rx - this._prevNet.total.rx) / dt);
                     const txRate = Math.max(0, (net.total.tx - this._prevNet.total.tx) / dt);
-                    if (on.has("network") && this._labels.net) {
-                        this._labels.net.set_text(
-                            this._labelPrefix("network") + "↓ " + this._fmt(rxRate) + "/s  ↑ " + this._fmt(txRate) + "/s"
-                        );
-                    }
+                    v.network = "↓ " + this._fmt(rxRate) + "/s  ↑ " + this._fmt(txRate) + "/s";
                     const combined = rxRate + txRate;
                     this._netMax = Math.max(this._netMax * 0.97, combined, 1024);
                     this._pushHistory("net", combined);
 
-                    if (on.has("network-ifaces") && this._labels.netIfaces) {
+                    if (used.has("network-ifaces")) {
                         const lines = [];
-                        const prefix = this._labelPrefix("network-ifaces");
                         for (const iface in net.ifaces) {
                             const prev = this._prevNet.ifaces[iface];
                             if (!prev) continue;
                             const rr = Math.max(0, (net.ifaces[iface].rx - prev.rx) / dt);
                             const tr = Math.max(0, (net.ifaces[iface].tx - prev.tx) / dt);
                             if (rr + tr < 100) continue;
-                            lines.push(prefix + iface + ": ↓ " + this._fmt(rr) + "/s  ↑ " + this._fmt(tr) + "/s");
+                            lines.push(iface + ": ↓ " + this._fmt(rr) + "/s  ↑ " + this._fmt(tr) + "/s");
                         }
-                        this._labels.netIfaces.set_text(lines.length ? lines.join("\n") : prefix + "(all interfaces idle)");
+                        v["network-ifaces"] = lines.length ? lines.join("\n") : "(all interfaces idle)";
                     }
                 }
-            } else if (on.has("network") && this._labels.net) {
-                this._labels.net.set_text(this._labelPrefix("network") + "measuring...");
+            } else {
+                if (used.has("network")) v.network = "measuring...";
             }
             this._prevNet = net;
         }
 
-        if (on.has("ip-local") && this._labels.localIp) {
+        if (used.has("ip-local")) {
             this._localIP = this._getLocalIp();
-            this._labels.localIp.set_text(this._labelPrefix("ip-local") + (this._localIP || "unavailable"));
+            v["ip-local"] = this._localIP || "unavailable";
         }
 
-        if (on.has("ip-public") && this._labels.publicIp) {
+        if (used.has("ip-public")) {
             this._fetchPublicIpAsync();
-            this._refreshPublicIpLabel();
+            v["ip-public"] = this._publicIpText();
+        }
+
+        return v;
+    },
+
+    _update: function() {
+        if (this._removed || !this._container) return;
+
+        const values = this._computeValueForTick();
+
+        for (let i = 0; i < this._orderedRows.length; i++) {
+            const row = this._orderedRows[i];
+            const label = this._labels[i];
+            if (!label) continue;
+            const prefix = this._prefix(row);
+            let text;
+            if (row.section === "text") {
+                // Text section: the label IS the content. If the user left
+                // it blank, fall back to a hint so the row isn't invisible.
+                text = row.label ? row.label : "(empty text — set Custom label)";
+                label.set_text(text);
+                continue;
+            }
+            if (row.section === "command") {
+                const out = this._maybeRunCommand(row);
+                label.set_text(this._applyPrefix(prefix, out || "…"));
+                continue;
+            }
+            const raw = values[row.section];
+            if (raw === undefined) continue;
+            label.set_text(this._applyPrefix(prefix, raw));
         }
 
         this._repaintGraphs();
