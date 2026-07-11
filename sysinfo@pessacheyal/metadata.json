@@ -2,7 +2,7 @@
     "uuid": "sysinfo@pessacheyal",
     "name": "System Info",
     "description": "Shows CPU (with temperature), RAM, swap, disk, network, uptime, load average, battery, and IP addresses on the desktop, with reorderable sections, hostname in the title, configurable background opacity, history sparklines, and light/dark theming.",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "prevent-decorations": false,
     "max-instances": 1
 }
