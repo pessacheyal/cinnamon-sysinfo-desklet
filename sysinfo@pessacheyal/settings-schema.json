@@ -123,6 +123,7 @@
                     "Battery":                 "battery",
                     "Network throughput":      "network",
                     "Network (per interface)": "network-ifaces",
+                    "WiFi name":               "wifi",
                     "Local IP address":        "ip-local",
                     "Public IP address":       "ip-public",
                     "Custom text":             "text",
@@ -214,6 +215,7 @@
             { "section": "battery",        "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "network",        "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "network-ifaces", "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "wifi",           "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "ip-local",       "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "ip-public",      "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false }
         ]

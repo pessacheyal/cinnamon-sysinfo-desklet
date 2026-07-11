@@ -27,6 +27,7 @@ const SECTION_MAP = {
     "battery":        { hasGraph: false },
     "network":        { hasGraph: true,  histKey: "net" },
     "network-ifaces": { hasGraph: false },
+    "wifi":           { hasGraph: false },
     "ip-local":       { hasGraph: false },
     "ip-public":      { hasGraph: false },
     "text":           { hasGraph: false },
@@ -48,6 +49,7 @@ const DEFAULT_LABELS = {
     "battery":        "Battery: ",
     "network":        "Net: ",
     "network-ifaces": "",
+    "wifi":           "WiFi: ",
     "ip-local":       "Local: ",
     "ip-public":      "",
     "text":           "",
@@ -68,6 +70,7 @@ const DEFAULT_SECTIONS_LIST = [
     { section: "battery",        enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "network",        enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "network-ifaces", enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "wifi",           enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "ip-local",       enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "ip-public",      enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false }
 ];
@@ -432,6 +435,30 @@ SysInfoDesklet.prototype = {
         };
     },
 
+    _getWifiName: function() {
+        // Try wireless-tools first (present on almost every distro).
+        try {
+            const [ok, stdout] = GLib.spawn_command_line_sync("iwgetid -r");
+            if (ok) {
+                const s = stdout.toString().trim();
+                if (s) return s;
+            }
+        } catch (e) {}
+        // Fallback to NetworkManager.
+        try {
+            const [ok, stdout] = GLib.spawn_command_line_sync("nmcli -t -f active,ssid dev wifi");
+            if (ok) {
+                const lines = stdout.toString().split("\n");
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].indexOf("yes:") === 0) {
+                        return lines[i].slice(4).trim();
+                    }
+                }
+            }
+        } catch (e) {}
+        return null;
+    },
+
     _getLocalIp: function() {
         try {
             const [ok, stdout] = GLib.spawn_command_line_sync("hostname -I");
@@ -773,6 +800,10 @@ SysInfoDesklet.prototype = {
                 if (used.has("network")) v.network = "measuring...";
             }
             this._prevNet = net;
+        }
+
+        if (used.has("wifi")) {
+            v.wifi = this._getWifiName() || "not connected";
         }
 
         if (used.has("ip-local")) {
