@@ -10,12 +10,12 @@
         },
         "general-appearance": {
             "type": "section",
-            "title": "Appearance & refresh",
+            "title": "Appearance and refresh",
             "keys": ["refresh", "font-size", "theme-mode", "bg-opacity", "border-width", "border-color"]
         },
         "general-clock": {
             "type": "section",
-            "title": "Time & date",
+            "title": "Time and date",
             "keys": ["clock-format"]
         },
 
@@ -88,7 +88,7 @@
     "clock-format": {
         "type": "entry",
         "default": "%H:%M:%S %d-%m-%Y",
-        "description": "Time & date format",
+        "description": "Time and date format",
         "tooltip": "strftime-style format string (e.g. %H:%M:%S %d-%m-%Y, %A %B %e, %I:%M %p, %F %T)"
     },
 
@@ -105,10 +105,9 @@
                 "id": "section",
                 "title": "Section",
                 "type": "string",
-                "expand-width": true,
                 "default": "clock",
                 "options": {
-                    "Time & date":             "clock",
+                    "Time and date":           "clock",
                     "CPU + temperature":       "cpu",
                     "RAM":                     "mem",
                     "Swap":                    "swap",
