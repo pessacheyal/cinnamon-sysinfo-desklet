@@ -109,6 +109,7 @@ SysInfoDesklet.prototype = {
         this._stockQuotes = {};
         this._stocksInFlight = {};
         this._stocksFetchedAt = 0;
+        this._stocksLastWallClock = 0;
         this._stocksTimeout = null;
 
         this._bindSettings(desklet_id);
@@ -157,6 +158,7 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "stocks-show-trend",   "stocksShowTrend",   onSection);
         this.settings.bindProperty(b, "stocks-show-change",  "stocksShowChange",  onSection);
         this.settings.bindProperty(b, "stocks-show-refresh", "stocksShowRefresh", onSection);
+        this.settings.bindProperty(b, "stocks-show-updated", "stocksShowUpdated", onSection);
         this.settings.bindProperty(b, "stocks-list",         "stocksList",        onStocksSchedule);
     },
 
@@ -277,6 +279,17 @@ SysInfoDesklet.prototype = {
         return parts.length ? parts.join(";") + ";" : "";
     },
 
+    // Same as _rowStyleStr but without `color:` so Pango <span foreground=...>
+    // in markup actually wins. Used for cells that colorize themselves
+    // (trend arrow and % change when stocks-color-change is on).
+    _rowStyleStrNoColor: function(row) {
+        const parts = [];
+        if (row.size && row.size > 0) parts.push("font-size: " + row.size + "px");
+        if (row.bold) parts.push("font-weight: bold");
+        if (row.italic) parts.push("font-style: italic");
+        return parts.length ? parts.join(";") + ";" : "";
+    },
+
     _prefix: function(row) {
         return row.label || DEFAULT_LABELS[row.section] || "";
     },
@@ -349,6 +362,7 @@ SysInfoDesklet.prototype = {
 
     _addStocksBlock: function(index, row) {
         const rowStyle = this._rowStyleStr(row);
+        const rowStyleNoColor = this._rowStyleStrNoColor(row);
         const columns = this._activeStockColumns();
 
         // St.Table lays out children in a grid with aligned columns.
@@ -369,7 +383,9 @@ SysInfoDesklet.prototype = {
             const cells = {};
             for (let c = 0; c < columns.length; c++) {
                 const col = columns[c];
-                const widget = this._buildStockCell(col, sym, rowStyle);
+                const useColorized = (col === "trend" || col === "change") && this.stocksColorChange !== false;
+                const cellStyle = useColorized ? rowStyleNoColor : rowStyle;
+                const widget = this._buildStockCell(col, sym, cellStyle);
                 cells[col] = widget;
                 table.add(widget, { row: tableRow, col: c, x_fill: col === "name", x_expand: col === "name" });
             }
@@ -389,8 +405,15 @@ SysInfoDesklet.prototype = {
             table.add(empty, { row: 0, col: 0 });
         }
 
-        this._stockRowWidgets[index] = { container: table, items: items, columns: columns };
+        this._stockRowWidgets[index] = { container: table, items: items, columns: columns, updatedLabel: null };
         this._container.add(table);
+
+        if (this.stocksShowUpdated === true) {
+            const updated = new St.Label({ style_class: "sysinfo-stocks-updated" });
+            updated.set_text(this._formatStocksUpdatedText());
+            this._stockRowWidgets[index].updatedLabel = updated;
+            this._container.add(updated);
+        }
     },
 
     _buildStockCell: function(col, sym, rowStyle) {
@@ -890,7 +913,9 @@ SysInfoDesklet.prototype = {
                     try { global.log("[sysinfo] stock fetch failed for " + symbol); } catch (e) {}
                 }
                 this._stocksFetchedAt = GLib.get_monotonic_time() / 1000000;
+                if (gotData) this._stocksLastWallClock = Date.now();
                 this._refreshStockLabels();
+                this._refreshStocksUpdatedLabel();
             }));
         } catch (e) {
             if (this._stocksInFlight) this._stocksInFlight[symbol] = false;
@@ -938,6 +963,27 @@ SysInfoDesklet.prototype = {
             );
         } catch (e) {
             try { global.log("[sysinfo] failed to open " + url + ": " + e); } catch (_) {}
+        }
+    },
+
+    _formatStocksUpdatedText: function() {
+        if (!this._stocksLastWallClock) return "Last update: never";
+        try {
+            const dt = GLib.DateTime.new_from_unix_local(Math.floor(this._stocksLastWallClock / 1000));
+            const s = dt.format("%H:%M:%S");
+            if (s) return "Last update: " + s;
+        } catch (e) {}
+        return "Last update: " + new Date(this._stocksLastWallClock).toLocaleTimeString();
+    },
+
+    _refreshStocksUpdatedLabel: function() {
+        if (!this._stockRowWidgets) return;
+        for (let i = 0; i < this._orderedRows.length; i++) {
+            const row = this._orderedRows[i];
+            if (row.section !== "stocks") continue;
+            const w = this._stockRowWidgets[i];
+            if (!w || !w.updatedLabel) continue;
+            w.updatedLabel.set_text(this._formatStocksUpdatedText());
         }
     },
 

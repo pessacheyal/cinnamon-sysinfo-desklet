@@ -50,6 +50,12 @@
     opacity: 1.0;
 }
 
+.sysinfo-stocks-updated {
+    font-size: 10px;
+    opacity: 0.6;
+    padding: 2px 0 0 0;
+}
+
 .sysinfo-stocks-price {
     color: inherit;
 }

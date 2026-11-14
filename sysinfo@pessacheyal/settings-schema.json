@@ -59,7 +59,7 @@
         "stocks-fields": {
             "type": "section",
             "title": "Columns to show for each stock",
-            "keys": ["stocks-show-trend", "stocks-show-symbol", "stocks-show-name", "stocks-show-price", "stocks-show-change", "stocks-show-refresh", "stocks-color-change"]
+            "keys": ["stocks-show-trend", "stocks-show-symbol", "stocks-show-name", "stocks-show-price", "stocks-show-change", "stocks-show-refresh", "stocks-color-change", "stocks-show-updated"]
         },
         "stocks-list-sec": {
             "type": "section",
@@ -317,6 +317,13 @@
         "default": true,
         "description": "Show per-stock refresh button",
         "tooltip": "Display a ↻ button on the right of each row for manually refreshing that symbol.",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-updated": {
+        "type": "checkbox",
+        "default": false,
+        "description": "Show last update timestamp",
+        "tooltip": "Display a small line under the stocks table showing when the most recent refresh completed.",
         "dependency": "stocks-enabled"
     },
     "stocks-show-symbol": {
