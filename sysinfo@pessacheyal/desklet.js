@@ -287,13 +287,18 @@ SysInfoDesklet.prototype = {
 
         this._labels = {};
         this._graphs = {};
+        this._stockRowWidgets = {};
         // Preserve existing command-state so cached output survives rebuilds.
         // (keys are section+"@"+command, not row indices, since indices shift.)
         this._container = new St.BoxLayout({ vertical: true, style_class: "sysinfo-container" });
 
         for (let i = 0; i < this._orderedRows.length; i++) {
             const row = this._orderedRows[i];
-            this._addLine(i, row);
+            if (row.section === "stocks") {
+                this._addStocksBlock(i, row);
+            } else {
+                this._addLine(i, row);
+            }
             if (SECTION_MAP[row.section].hasGraph) this._addGraph(i, row);
         }
 
@@ -319,6 +324,54 @@ SysInfoDesklet.prototype = {
         area.connect("repaint", Lang.bind(this, function(a) { this._drawGraph(a, histKey); }));
         this._graphs[index] = area;
         this._container.add(area);
+    },
+
+    _addStocksBlock: function(index, row) {
+        const box = new St.BoxLayout({ vertical: true, style_class: "sysinfo-stocks-block" });
+        const rowStyle = this._rowStyleStr(row);
+        const items = [];
+        const list = Array.isArray(this.stocksList) ? this.stocksList : [];
+        const seen = {};
+        for (let j = 0; j < list.length; j++) {
+            const r = list[j];
+            if (!r || r.enabled === false) continue;
+            const sym = String(r.symbol || "").trim().toUpperCase();
+            if (!sym || seen[sym]) continue;
+            seen[sym] = true;
+
+            const line = new St.BoxLayout({ vertical: false, style_class: "sysinfo-stocks-row" });
+
+            const btn = new St.Button({
+                style_class: "sysinfo-stocks-refresh",
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                label: "↻"
+            });
+            btn.set_style("padding: 0 6px 0 0; background: transparent; border: none;");
+            btn.set_tooltip_text ? btn.set_tooltip_text("Refresh " + sym) : null;
+            btn.connect("clicked", Lang.bind(this, function() {
+                this._fetchStocks([sym]);
+            }));
+
+            const label = new St.Label({ style_class: "sysinfo-stocks-line" });
+            if (rowStyle) label.set_style(rowStyle);
+
+            line.add(btn);
+            line.add(label);
+            box.add(line);
+            items.push({ symbol: sym, label: label, button: btn, customLabel: r.label || "" });
+        }
+
+        if (items.length === 0) {
+            const empty = new St.Label({ style_class: "sysinfo-stocks-line" });
+            if (rowStyle) empty.set_style(rowStyle);
+            empty.set_text("no symbols");
+            box.add(empty);
+        }
+
+        this._stockRowWidgets[index] = { container: box, items: items };
+        this._container.add(box);
     },
 
     // ------------- readers -------------
@@ -730,11 +783,13 @@ SysInfoDesklet.prototype = {
         this._rebuildUI();
     },
 
-    _fetchStocks: function() {
+    _fetchStocks: function(symbolsOverride) {
         if (this._removed) return;
         if (!this.stocksEnabled) return;
         if (this._stocksFetching) return;
-        const symbols = this._enabledStockSymbols();
+        const symbols = Array.isArray(symbolsOverride) && symbolsOverride.length > 0
+            ? symbolsOverride
+            : this._enabledStockSymbols();
         if (symbols.length === 0) return;
 
         this._stocksFetching = true;
@@ -815,84 +870,64 @@ SysInfoDesklet.prototype = {
         return p.toFixed(2);
     },
 
-    // Build the markup string for the stock section. One line per enabled
-    // symbol. Returns pango markup when color-by-change is on, plain text
-    // otherwise. The caller decides which St.Label method to use.
-    _renderStocksBlock: function(useMarkup) {
-        const list = Array.isArray(this.stocksList) ? this.stocksList : [];
-        const lines = [];
-        for (let i = 0; i < list.length; i++) {
-            const r = list[i];
-            if (!r || r.enabled === false) continue;
-            const sym = String(r.symbol || "").trim().toUpperCase();
-            if (!sym) continue;
-            const label = r.label ? r.label : sym;
-            const q = this._stockQuotes[sym];
-            if (!q) {
-                lines.push(useMarkup
-                    ? this._escapeMarkup(label) + "  <i>loading…</i>"
-                    : label + "  loading…");
-                continue;
-            }
-            const cur = this._currencySymbol(q.currency);
-            const priceStr = cur + this._formatPrice(q.price);
-            let changeStr;
-            if (q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
-                changeStr = "";
-            } else {
-                const sign = q.changePct >= 0 ? "+" : "";
-                changeStr = sign + q.changePct.toFixed(2) + "%";
-            }
+    // Build the text (or markup) for a single symbol's row.
+    _renderStockLine: function(symbol, customLabel, prefix, useMarkup) {
+        const displayLabel = customLabel ? customLabel : symbol;
+        const q = this._stockQuotes[symbol];
+        if (!q) {
             if (useMarkup) {
-                let line = this._escapeMarkup(label) + "  " + this._escapeMarkup(priceStr);
-                if (changeStr) {
-                    const color = q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
-                    line += "  <span foreground=\"" + color + "\">" + this._escapeMarkup(changeStr) + "</span>";
-                }
-                lines.push(line);
-            } else {
-                lines.push(label + "  " + priceStr + (changeStr ? "  " + changeStr : ""));
+                return this._escapeMarkup(prefix) + this._escapeMarkup(displayLabel) + "  <i>loading…</i>";
             }
+            return prefix + displayLabel + "  loading…";
         }
-        if (lines.length === 0) {
-            return useMarkup ? "<i>no symbols</i>" : "no symbols";
+        const cur = this._currencySymbol(q.currency);
+        const priceStr = cur + this._formatPrice(q.price);
+        let changeStr = "";
+        if (q.changePct !== null && q.changePct !== undefined && !isNaN(q.changePct)) {
+            const sign = q.changePct >= 0 ? "+" : "";
+            changeStr = sign + q.changePct.toFixed(2) + "%";
         }
-        return lines.join("\n");
+        if (useMarkup) {
+            let line = this._escapeMarkup(prefix) + this._escapeMarkup(displayLabel) + "  " + this._escapeMarkup(priceStr);
+            if (changeStr) {
+                const color = q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
+                line += "  <span foreground=\"" + color + "\">" + this._escapeMarkup(changeStr) + "</span>";
+            }
+            return line;
+        }
+        return prefix + displayLabel + "  " + priceStr + (changeStr ? "  " + changeStr : "");
     },
 
     _refreshStockLabels: function() {
-        if (!this._labels) return;
+        if (!this._stockRowWidgets) return;
         for (let i = 0; i < this._orderedRows.length; i++) {
             const row = this._orderedRows[i];
             if (row.section !== "stocks") continue;
-            if (!this._labels[i]) continue;
+            const w = this._stockRowWidgets[i];
+            if (!w) continue;
             this._applyStockLabel(i, row);
         }
     },
 
     _applyStockLabel: function(index, row) {
-        const label = this._labels[index];
-        if (!label) return;
+        const w = this._stockRowWidgets[index];
+        if (!w) return;
         const prefix = this._prefix(row);
         const useMarkup = this.stocksColorChange !== false;
-        if (useMarkup) {
-            const body = this._renderStocksBlock(true);
-            let markup;
-            if (prefix) {
-                const prefSafe = this._escapeMarkup(prefix);
-                markup = body.split("\n").map(function(l) { return prefSafe + l; }).join("\n");
-            } else {
-                markup = body;
+        for (let i = 0; i < w.items.length; i++) {
+            const item = w.items[i];
+            if (useMarkup) {
+                try {
+                    item.label.clutter_text.set_markup(
+                        this._renderStockLine(item.symbol, item.customLabel, prefix, true)
+                    );
+                    continue;
+                } catch (e) {
+                    // fall through to plain text
+                }
             }
-            try {
-                label.clutter_text.set_markup(markup);
-                return;
-            } catch (e) {
-                // fall through to plain-text path
-            }
+            item.label.set_text(this._renderStockLine(item.symbol, item.customLabel, prefix, false));
         }
-        const plain = this._renderStocksBlock(false);
-        label.set_text(this._applyPrefix(prefix, plain));
     },
 
     // ------------- settings-button callbacks -------------
@@ -1069,6 +1104,10 @@ SysInfoDesklet.prototype = {
 
         for (let i = 0; i < this._orderedRows.length; i++) {
             const row = this._orderedRows[i];
+            if (row.section === "stocks") {
+                this._applyStockLabel(i, row);
+                continue;
+            }
             const label = this._labels[i];
             if (!label) continue;
             const prefix = this._prefix(row);
@@ -1083,10 +1122,6 @@ SysInfoDesklet.prototype = {
             if (row.section === "command") {
                 const out = this._maybeRunCommand(row);
                 label.set_text(this._applyPrefix(prefix, out || "…"));
-                continue;
-            }
-            if (row.section === "stocks") {
-                this._applyStockLabel(i, row);
                 continue;
             }
             const raw = values[row.section];

@@ -17,3 +17,25 @@
 .sysinfo-line {
     padding: 2px 0;
 }
+
+.sysinfo-stocks-block {
+    spacing: 2px;
+}
+
+.sysinfo-stocks-row {
+    spacing: 4px;
+}
+
+.sysinfo-stocks-line {
+    padding: 1px 0;
+}
+
+.sysinfo-stocks-refresh {
+    color: inherit;
+    opacity: 0.6;
+    min-width: 16px;
+}
+
+.sysinfo-stocks-refresh:hover {
+    opacity: 1.0;
+}
