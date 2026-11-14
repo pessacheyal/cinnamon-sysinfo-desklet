@@ -387,7 +387,22 @@ SysInfoDesklet.prototype = {
                 const cellStyle = useColorized ? rowStyleNoColor : rowStyle;
                 const widget = this._buildStockCell(col, sym, cellStyle);
                 cells[col] = widget;
-                table.add(widget, { row: tableRow, col: c, x_fill: col === "name", x_expand: col === "name" });
+
+                // Numeric columns right-align, text columns left-align,
+                // trend/refresh center. Use x_fill:false so the child is
+                // sized to its content and positioned within the cell by
+                // x_align. The "name" column expands to fill extra width.
+                let xAlign = 0.0;
+                if (col === "price" || col === "change") xAlign = 1.0;
+                else if (col === "trend" || col === "refresh") xAlign = 0.5;
+                const xExpand = (col === "name");
+                table.add(widget, {
+                    row: tableRow,
+                    col: c,
+                    x_fill: xExpand,
+                    x_expand: xExpand,
+                    x_align: xAlign
+                });
             }
 
             items.push({
@@ -1089,12 +1104,16 @@ SysInfoDesklet.prototype = {
                 const out = this._renderStockCell(col, item, useMarkup);
                 if (useMarkup && out.markup) {
                     try {
+                        // In Cinnamon/St, calling set_text toggles use_markup off,
+                        // so when we switch back to markup we must re-enable it.
+                        label.clutter_text.set_use_markup(true);
                         label.clutter_text.set_markup(out.markup);
                         continue;
                     } catch (e) {
                         // fall through
                     }
                 }
+                try { label.clutter_text.set_use_markup(false); } catch (e) {}
                 label.set_text(out.text || "");
             }
         }
