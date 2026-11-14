@@ -19,7 +19,8 @@
 }
 
 .sysinfo-stocks-block {
-    spacing: 2px;
+    spacing-rows: 2px;
+    spacing-columns: 10px;
 }
 
 .sysinfo-stocks-row {
@@ -28,6 +29,15 @@
 
 .sysinfo-stocks-line {
     padding: 1px 0;
+}
+
+.sysinfo-stocks-col-change,
+.sysinfo-stocks-col-price {
+    min-width: 72px;
+}
+
+.sysinfo-stocks-col-trend {
+    min-width: 14px;
 }
 
 .sysinfo-stocks-refresh {

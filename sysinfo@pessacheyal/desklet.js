@@ -151,6 +151,11 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "stocks-enabled",      "stocksEnabled",     onStocksSchedule);
         this.settings.bindProperty(b, "stocks-refresh",      "stocksRefresh",     onStocksSchedule);
         this.settings.bindProperty(b, "stocks-color-change", "stocksColorChange", onSection);
+        this.settings.bindProperty(b, "stocks-show-symbol",  "stocksShowSymbol",  onSection);
+        this.settings.bindProperty(b, "stocks-show-name",    "stocksShowName",    onSection);
+        this.settings.bindProperty(b, "stocks-show-price",   "stocksShowPrice",   onSection);
+        this.settings.bindProperty(b, "stocks-show-trend",   "stocksShowTrend",   onSection);
+        this.settings.bindProperty(b, "stocks-show-change",  "stocksShowChange",  onSection);
         this.settings.bindProperty(b, "stocks-list",         "stocksList",        onStocksSchedule);
     },
 
@@ -326,12 +331,32 @@ SysInfoDesklet.prototype = {
         this._container.add(area);
     },
 
+    _activeStockColumns: function() {
+        // Returns an ordered list of column keys to display. The refresh
+        // button sits in the leftmost column and is always present; the
+        // remaining columns are user-configurable via the Stocks tab.
+        const cols = ["refresh"];
+        if (this.stocksShowSymbol !== false) cols.push("symbol");
+        if (this.stocksShowName === true)    cols.push("name");
+        if (this.stocksShowPrice !== false)  cols.push("price");
+        if (this.stocksShowTrend !== false)  cols.push("trend");
+        if (this.stocksShowChange !== false) cols.push("change");
+        if (cols.length === 1) cols.push("symbol"); // never empty
+        return cols;
+    },
+
     _addStocksBlock: function(index, row) {
-        const box = new St.BoxLayout({ vertical: true, style_class: "sysinfo-stocks-block" });
         const rowStyle = this._rowStyleStr(row);
-        const items = [];
+        const columns = this._activeStockColumns();
+
+        // St.Table lays out children in a grid with aligned columns.
+        const table = new St.Table({ style_class: "sysinfo-stocks-block", homogeneous: false });
+
         const list = Array.isArray(this.stocksList) ? this.stocksList : [];
         const seen = {};
+        const items = [];
+        let tableRow = 0;
+
         for (let j = 0; j < list.length; j++) {
             const r = list[j];
             if (!r || r.enabled === false) continue;
@@ -339,8 +364,35 @@ SysInfoDesklet.prototype = {
             if (!sym || seen[sym]) continue;
             seen[sym] = true;
 
-            const line = new St.BoxLayout({ vertical: false, style_class: "sysinfo-stocks-row" });
+            const cells = {};
+            for (let c = 0; c < columns.length; c++) {
+                const col = columns[c];
+                const widget = this._buildStockCell(col, sym, rowStyle);
+                cells[col] = widget;
+                table.add(widget, { row: tableRow, col: c, x_fill: col === "name", x_expand: col === "name" });
+            }
 
+            items.push({
+                symbol: sym,
+                customLabel: r.label || "",
+                cells: cells
+            });
+            tableRow++;
+        }
+
+        if (items.length === 0) {
+            const empty = new St.Label({ style_class: "sysinfo-stocks-line" });
+            if (rowStyle) empty.set_style(rowStyle);
+            empty.set_text("no symbols");
+            table.add(empty, { row: 0, col: 0 });
+        }
+
+        this._stockRowWidgets[index] = { container: table, items: items, columns: columns };
+        this._container.add(table);
+    },
+
+    _buildStockCell: function(col, sym, rowStyle) {
+        if (col === "refresh") {
             const btn = new St.Button({
                 style_class: "sysinfo-stocks-refresh",
                 can_focus: true,
@@ -349,44 +401,41 @@ SysInfoDesklet.prototype = {
                 label: "↻"
             });
             btn.set_style("padding: 0 6px 0 0; background: transparent; border: none;");
-            btn.set_tooltip_text ? btn.set_tooltip_text("Refresh " + sym) : null;
+            if (btn.set_tooltip_text) btn.set_tooltip_text("Refresh " + sym);
             btn.connect("clicked", Lang.bind(this, function() {
                 this._fetchStocks([sym]);
             }));
+            return btn;
+        }
 
-            const label = new St.Label({ style_class: "sysinfo-stocks-line" });
-            if (rowStyle) label.set_style(rowStyle);
+        const label = new St.Label({ style_class: "sysinfo-stocks-line sysinfo-stocks-col-" + col });
+        if (rowStyle) label.set_style(rowStyle);
+        label.set_text("…");
 
-            const priceBtn = new St.Button({
+        // Price / symbol / name are clickable → open Yahoo Finance.
+        if (col === "symbol" || col === "price" || col === "name") {
+            const btn = new St.Button({
                 style_class: "sysinfo-stocks-price",
                 can_focus: true,
                 reactive: true,
                 track_hover: true,
                 child: label
             });
-            priceBtn.set_style("background: transparent; border: none; padding: 0;");
-            if (priceBtn.set_tooltip_text) {
-                priceBtn.set_tooltip_text("Open " + sym + " on Yahoo Finance");
-            }
-            priceBtn.connect("clicked", Lang.bind(this, function() {
+            btn.set_style("background: transparent; border: none; padding: 0;");
+            if (btn.set_tooltip_text) btn.set_tooltip_text("Open " + sym + " on Yahoo Finance");
+            btn.connect("clicked", Lang.bind(this, function() {
                 this._openStockUrl(sym);
             }));
-
-            line.add(btn);
-            line.add(priceBtn);
-            box.add(line);
-            items.push({ symbol: sym, label: label, button: btn, priceBtn: priceBtn, customLabel: r.label || "" });
+            btn._label = label;
+            return btn;
         }
 
-        if (items.length === 0) {
-            const empty = new St.Label({ style_class: "sysinfo-stocks-line" });
-            if (rowStyle) empty.set_style(rowStyle);
-            empty.set_text("no symbols");
-            box.add(empty);
-        }
+        return label;
+    },
 
-        this._stockRowWidgets[index] = { container: box, items: items };
-        this._container.add(box);
+    _cellLabel: function(cell) {
+        // Buttons wrap a label in `_label`; bare labels are themselves.
+        return (cell && cell._label) ? cell._label : cell;
     },
 
     // ------------- readers -------------
@@ -867,11 +916,13 @@ SysInfoDesklet.prototype = {
             changePct = (change / prevClose) * 100;
         }
         const currency = meta.currency || "";
+        const longName = meta.longName || meta.shortName || "";
         this._stockQuotes[symbol] = {
             price: price,
             change: change,
             changePct: changePct,
-            currency: currency
+            currency: currency,
+            longName: longName
         };
         return price !== null;
     },
@@ -915,32 +966,52 @@ SysInfoDesklet.prototype = {
         return p.toFixed(2);
     },
 
-    // Build the text (or markup) for a single symbol's row.
-    _renderStockLine: function(symbol, customLabel, prefix, useMarkup) {
-        const displayLabel = customLabel ? customLabel : symbol;
-        const q = this._stockQuotes[symbol];
-        if (!q) {
+    // Compute the text / markup for a single cell of a single symbol.
+    // Returns { text, markup } — markup is null when colorization isn't
+    // needed; the caller picks the appropriate setter.
+    _renderStockCell: function(col, item, useMarkup) {
+        const sym = item.symbol;
+        const q = this._stockQuotes[sym];
+        const loading = !q;
+
+        if (col === "symbol") {
+            const display = item.customLabel ? item.customLabel : sym;
+            return { text: display, markup: null };
+        }
+        if (col === "name") {
+            if (loading) return { text: "…", markup: null };
+            return { text: q.longName || "", markup: null };
+        }
+        if (col === "price") {
+            if (loading) return { text: "loading…", markup: useMarkup ? "<i>loading…</i>" : null };
+            const cur = this._currencySymbol(q.currency);
+            return { text: cur + this._formatPrice(q.price), markup: null };
+        }
+        if (col === "trend") {
+            if (loading || q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
+                return { text: "", markup: null };
+            }
+            const up = q.changePct >= 0;
+            const glyph = up ? "▲" : "▼";
             if (useMarkup) {
-                return this._escapeMarkup(prefix) + this._escapeMarkup(displayLabel) + "  <i>loading…</i>";
+                const color = up ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
+                return { text: glyph, markup: "<span foreground=\"" + color + "\">" + glyph + "</span>" };
             }
-            return prefix + displayLabel + "  loading…";
+            return { text: glyph, markup: null };
         }
-        const cur = this._currencySymbol(q.currency);
-        const priceStr = cur + this._formatPrice(q.price);
-        let changeStr = "";
-        if (q.changePct !== null && q.changePct !== undefined && !isNaN(q.changePct)) {
+        if (col === "change") {
+            if (loading || q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
+                return { text: "", markup: null };
+            }
             const sign = q.changePct >= 0 ? "+" : "";
-            changeStr = sign + q.changePct.toFixed(2) + "%";
-        }
-        if (useMarkup) {
-            let line = this._escapeMarkup(prefix) + this._escapeMarkup(displayLabel) + "  " + this._escapeMarkup(priceStr);
-            if (changeStr) {
+            const pct = sign + q.changePct.toFixed(2) + "%";
+            if (useMarkup) {
                 const color = q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
-                line += "  <span foreground=\"" + color + "\">" + this._escapeMarkup(changeStr) + "</span>";
+                return { text: pct, markup: "<span foreground=\"" + color + "\">" + this._escapeMarkup(pct) + "</span>" };
             }
-            return line;
+            return { text: pct, markup: null };
         }
-        return prefix + displayLabel + "  " + priceStr + (changeStr ? "  " + changeStr : "");
+        return { text: "", markup: null };
     },
 
     _refreshStockLabels: function() {
@@ -957,21 +1028,27 @@ SysInfoDesklet.prototype = {
     _applyStockLabel: function(index, row) {
         const w = this._stockRowWidgets[index];
         if (!w) return;
-        const prefix = this._prefix(row);
         const useMarkup = this.stocksColorChange !== false;
+        const cols = w.columns || [];
         for (let i = 0; i < w.items.length; i++) {
             const item = w.items[i];
-            if (useMarkup) {
-                try {
-                    item.label.clutter_text.set_markup(
-                        this._renderStockLine(item.symbol, item.customLabel, prefix, true)
-                    );
-                    continue;
-                } catch (e) {
-                    // fall through to plain text
+            for (let c = 0; c < cols.length; c++) {
+                const col = cols[c];
+                if (col === "refresh") continue;
+                const cell = item.cells[col];
+                const label = this._cellLabel(cell);
+                if (!label) continue;
+                const out = this._renderStockCell(col, item, useMarkup);
+                if (useMarkup && out.markup) {
+                    try {
+                        label.clutter_text.set_markup(out.markup);
+                        continue;
+                    } catch (e) {
+                        // fall through
+                    }
                 }
+                label.set_text(out.text || "");
             }
-            item.label.set_text(this._renderStockLine(item.symbol, item.customLabel, prefix, false));
         }
     },
 

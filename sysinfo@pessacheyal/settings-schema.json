@@ -49,12 +49,17 @@
         "stocks": {
             "type": "page",
             "title": "Stocks",
-            "sections": ["stocks-main", "stocks-list-sec"]
+            "sections": ["stocks-main", "stocks-fields", "stocks-list-sec"]
         },
         "stocks-main": {
             "type": "section",
             "title": "Stock ticker settings",
             "keys": ["stocks-enabled", "stocks-refresh", "stocks-color-change"]
+        },
+        "stocks-fields": {
+            "type": "section",
+            "title": "Columns to show for each stock",
+            "keys": ["stocks-show-symbol", "stocks-show-name", "stocks-show-price", "stocks-show-trend", "stocks-show-change"]
         },
         "stocks-list-sec": {
             "type": "section",
@@ -305,6 +310,41 @@
         "default": true,
         "description": "Color percent change by direction",
         "tooltip": "When on, positive changes render green and negative changes render red (overrides the row Color column for the change portion).",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-symbol": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Show symbol",
+        "tooltip": "Display the ticker symbol column (e.g. AAPL).",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-name": {
+        "type": "checkbox",
+        "default": false,
+        "description": "Show long name",
+        "tooltip": "Display the company long name column (e.g. Apple Inc.).",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-price": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Show price",
+        "tooltip": "Display the current price column.",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-trend": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Show trend icon",
+        "tooltip": "Display an up/down arrow column indicating the day's direction.",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-change": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Show percent change",
+        "tooltip": "Display the daily percent change column.",
         "dependency": "stocks-enabled"
     },
     "stocks-list": {
