@@ -1029,52 +1029,47 @@ SysInfoDesklet.prototype = {
         return p.toFixed(2);
     },
 
-    // Compute the text / markup for a single cell of a single symbol.
-    // Returns { text, markup } — markup is null when colorization isn't
-    // needed; the caller picks the appropriate setter.
-    _renderStockCell: function(col, item, useMarkup) {
+    // Compute the display text and optional color override for a single cell.
+    // Color is applied by rewriting the label's inline `set_style` (most reliable
+    // path in Cinnamon — Pango markup is routinely overridden by the theme).
+    // Returns { text, color } where color is null when no colorization applies.
+    _renderStockCell: function(col, item, useColor) {
         const sym = item.symbol;
         const q = this._stockQuotes[sym];
         const loading = !q;
 
         if (col === "symbol") {
             const display = item.customLabel ? item.customLabel : sym;
-            return { text: display, markup: null };
+            return { text: display, color: null };
         }
         if (col === "name") {
-            if (loading) return { text: "…", markup: null };
-            return { text: q.longName || "", markup: null };
+            if (loading) return { text: "…", color: null };
+            return { text: q.longName || "", color: null };
         }
         if (col === "price") {
-            if (loading) return { text: "loading…", markup: useMarkup ? "<i>loading…</i>" : null };
+            if (loading) return { text: "loading…", color: null };
             const cur = this._currencySymbol(q.currency);
-            return { text: cur + this._formatPrice(q.price), markup: null };
+            return { text: cur + this._formatPrice(q.price), color: null };
         }
         if (col === "trend") {
             if (loading || q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
-                return { text: "", markup: null };
+                return { text: "", color: null };
             }
             const up = q.changePct >= 0;
             const glyph = up ? "▲" : "▼";
-            if (useMarkup) {
-                const color = up ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
-                return { text: glyph, markup: "<span foreground=\"" + color + "\">" + glyph + "</span>" };
-            }
-            return { text: glyph, markup: null };
+            const color = useColor ? (up ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR) : null;
+            return { text: glyph, color: color };
         }
         if (col === "change") {
             if (loading || q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
-                return { text: "", markup: null };
+                return { text: "", color: null };
             }
             const sign = q.changePct >= 0 ? "+" : "";
             const pct = sign + q.changePct.toFixed(2) + "%";
-            if (useMarkup) {
-                const color = q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
-                return { text: pct, markup: "<span foreground=\"" + color + "\">" + this._escapeMarkup(pct) + "</span>" };
-            }
-            return { text: pct, markup: null };
+            const color = useColor ? (q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR) : null;
+            return { text: pct, color: color };
         }
-        return { text: "", markup: null };
+        return { text: "", color: null };
     },
 
     _refreshStockLabels: function() {
@@ -1091,7 +1086,9 @@ SysInfoDesklet.prototype = {
     _applyStockLabel: function(index, row) {
         const w = this._stockRowWidgets[index];
         if (!w) return;
-        const useMarkup = this.stocksColorChange !== false;
+        const useColor = this.stocksColorChange !== false;
+        const baseStyleNoColor = this._rowStyleStrNoColor(row);
+        const baseStyle = this._rowStyleStr(row);
         const cols = w.columns || [];
         for (let i = 0; i < w.items.length; i++) {
             const item = w.items[i];
@@ -1101,20 +1098,21 @@ SysInfoDesklet.prototype = {
                 const cell = item.cells[col];
                 const label = this._cellLabel(cell);
                 if (!label) continue;
-                const out = this._renderStockCell(col, item, useMarkup);
-                if (useMarkup && out.markup) {
-                    try {
-                        // In Cinnamon/St, calling set_text toggles use_markup off,
-                        // so when we switch back to markup we must re-enable it.
-                        label.clutter_text.set_use_markup(true);
-                        label.clutter_text.set_markup(out.markup);
-                        continue;
-                    } catch (e) {
-                        // fall through
-                    }
-                }
+                const out = this._renderStockCell(col, item, useColor);
+                // Make sure we're in plain-text mode (any previous markup
+                // call could have left use_markup=true on this clutter_text).
                 try { label.clutter_text.set_use_markup(false); } catch (e) {}
                 label.set_text(out.text || "");
+                // Build the style string: for colorized cells, the color
+                // override replaces any row-color; for other cells, keep
+                // the row Color as chosen by the user.
+                let style;
+                if (out.color) {
+                    style = baseStyleNoColor + "color: " + out.color + ";";
+                } else {
+                    style = baseStyle;
+                }
+                label.set_style(style);
             }
         }
     },
