@@ -39,3 +39,11 @@
 .sysinfo-stocks-refresh:hover {
     opacity: 1.0;
 }
+
+.sysinfo-stocks-price {
+    color: inherit;
+}
+
+.sysinfo-stocks-price:hover .sysinfo-stocks-line {
+    text-decoration: underline;
+}

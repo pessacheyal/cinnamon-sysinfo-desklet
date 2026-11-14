@@ -107,7 +107,7 @@ SysInfoDesklet.prototype = {
         this._graphs = {};
         this._commandState = {};
         this._stockQuotes = {};
-        this._stocksFetching = false;
+        this._stocksInFlight = {};
         this._stocksFetchedAt = 0;
         this._stocksTimeout = null;
 
@@ -357,10 +357,25 @@ SysInfoDesklet.prototype = {
             const label = new St.Label({ style_class: "sysinfo-stocks-line" });
             if (rowStyle) label.set_style(rowStyle);
 
+            const priceBtn = new St.Button({
+                style_class: "sysinfo-stocks-price",
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                child: label
+            });
+            priceBtn.set_style("background: transparent; border: none; padding: 0;");
+            if (priceBtn.set_tooltip_text) {
+                priceBtn.set_tooltip_text("Open " + sym + " on Yahoo Finance");
+            }
+            priceBtn.connect("clicked", Lang.bind(this, function() {
+                this._openStockUrl(sym);
+            }));
+
             line.add(btn);
-            line.add(label);
+            line.add(priceBtn);
             box.add(line);
-            items.push({ symbol: sym, label: label, button: btn, customLabel: r.label || "" });
+            items.push({ symbol: sym, label: label, button: btn, priceBtn: priceBtn, customLabel: r.label || "" });
         }
 
         if (items.length === 0) {
@@ -786,60 +801,90 @@ SysInfoDesklet.prototype = {
     _fetchStocks: function(symbolsOverride) {
         if (this._removed) return;
         if (!this.stocksEnabled) return;
-        if (this._stocksFetching) return;
         const symbols = Array.isArray(symbolsOverride) && symbolsOverride.length > 0
             ? symbolsOverride
             : this._enabledStockSymbols();
         if (symbols.length === 0) return;
+        if (!this._stocksInFlight) this._stocksInFlight = {};
+        for (let i = 0; i < symbols.length; i++) {
+            const sym = String(symbols[i] || "").trim().toUpperCase();
+            if (!sym) continue;
+            if (this._stocksInFlight[sym]) continue;
+            this._stocksInFlight[sym] = true;
+            this._fetchOneStock(sym);
+        }
+    },
 
-        this._stocksFetching = true;
-        const url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" + encodeURIComponent(symbols.join(","));
+    _fetchOneStock: function(symbol) {
+        const url = "https://query1.finance.yahoo.com/v8/finance/chart/"
+            + encodeURIComponent(symbol)
+            + "?interval=1d&range=1d";
         try {
             const proc = Gio.Subprocess.new(
                 ["curl", "-sL", "-A", "Mozilla/5.0", "-m", "10", url],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             );
             proc.communicate_utf8_async(null, null, Lang.bind(this, function(p, res) {
-                this._stocksFetching = false;
+                if (this._stocksInFlight) this._stocksInFlight[symbol] = false;
                 if (this._removed) return;
+                let gotData = false;
                 try {
                     const result = p.communicate_utf8_finish(res);
                     const body = (result[1] || "").trim();
-                    this._parseStocksResponse(body);
+                    gotData = this._parseChartResponse(symbol, body);
                 } catch (e) {
-                    // leave cache untouched on failure
+                    gotData = false;
+                }
+                if (!gotData) {
+                    try { global.log("[sysinfo] stock fetch failed for " + symbol); } catch (e) {}
                 }
                 this._stocksFetchedAt = GLib.get_monotonic_time() / 1000000;
                 this._refreshStockLabels();
             }));
         } catch (e) {
-            this._stocksFetching = false;
+            if (this._stocksInFlight) this._stocksInFlight[symbol] = false;
         }
     },
 
-    _parseStocksResponse: function(body) {
-        if (!body) return;
+    _parseChartResponse: function(symbol, body) {
+        if (!body) return false;
         let json;
-        try { json = JSON.parse(body); } catch (e) { return; }
-        const qr = json && json.quoteResponse;
-        const results = qr && Array.isArray(qr.result) ? qr.result : null;
-        if (!results) return;
-        for (let i = 0; i < results.length; i++) {
-            const q = results[i];
-            if (!q || !q.symbol) continue;
-            const price = (q.regularMarketPrice !== undefined && q.regularMarketPrice !== null)
-                ? q.regularMarketPrice : null;
-            const changePct = (q.regularMarketChangePercent !== undefined && q.regularMarketChangePercent !== null)
-                ? q.regularMarketChangePercent : null;
-            const change = (q.regularMarketChange !== undefined && q.regularMarketChange !== null)
-                ? q.regularMarketChange : null;
-            const currency = q.currency || "";
-            this._stockQuotes[String(q.symbol).toUpperCase()] = {
-                price: price,
-                change: change,
-                changePct: changePct,
-                currency: currency
-            };
+        try { json = JSON.parse(body); } catch (e) { return false; }
+        const chart = json && json.chart;
+        if (!chart || chart.error || !Array.isArray(chart.result) || chart.result.length === 0) {
+            return false;
+        }
+        const meta = chart.result[0] && chart.result[0].meta;
+        if (!meta) return false;
+        const price = (meta.regularMarketPrice !== undefined && meta.regularMarketPrice !== null)
+            ? meta.regularMarketPrice : null;
+        const prevClose = (meta.chartPreviousClose !== undefined && meta.chartPreviousClose !== null)
+            ? meta.chartPreviousClose
+            : (meta.previousClose !== undefined ? meta.previousClose : null);
+        let change = null, changePct = null;
+        if (price !== null && prevClose !== null && prevClose !== 0) {
+            change = price - prevClose;
+            changePct = (change / prevClose) * 100;
+        }
+        const currency = meta.currency || "";
+        this._stockQuotes[symbol] = {
+            price: price,
+            change: change,
+            changePct: changePct,
+            currency: currency
+        };
+        return price !== null;
+    },
+
+    _openStockUrl: function(symbol) {
+        const url = "https://finance.yahoo.com/quote/" + encodeURIComponent(symbol);
+        try {
+            Gio.Subprocess.new(
+                ["xdg-open", url],
+                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
+            );
+        } catch (e) {
+            try { global.log("[sysinfo] failed to open " + url + ": " + e); } catch (_) {}
         }
     },
 
