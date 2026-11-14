@@ -156,6 +156,7 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "stocks-show-price",   "stocksShowPrice",   onSection);
         this.settings.bindProperty(b, "stocks-show-trend",   "stocksShowTrend",   onSection);
         this.settings.bindProperty(b, "stocks-show-change",  "stocksShowChange",  onSection);
+        this.settings.bindProperty(b, "stocks-show-refresh", "stocksShowRefresh", onSection);
         this.settings.bindProperty(b, "stocks-list",         "stocksList",        onStocksSchedule);
     },
 
@@ -332,16 +333,17 @@ SysInfoDesklet.prototype = {
     },
 
     _activeStockColumns: function() {
-        // Returns an ordered list of column keys to display. The refresh
-        // button sits in the leftmost column and is always present; the
-        // remaining columns are user-configurable via the Stocks tab.
-        const cols = ["refresh"];
+        // Columns rendered left-to-right. Trend is leftmost, refresh button
+        // (when enabled) is rightmost. The remaining data columns are
+        // user-configurable via the Stocks tab.
+        const cols = [];
+        if (this.stocksShowTrend  !== false) cols.push("trend");
         if (this.stocksShowSymbol !== false) cols.push("symbol");
-        if (this.stocksShowName === true)    cols.push("name");
-        if (this.stocksShowPrice !== false)  cols.push("price");
-        if (this.stocksShowTrend !== false)  cols.push("trend");
+        if (this.stocksShowName   === true)  cols.push("name");
+        if (this.stocksShowPrice  !== false) cols.push("price");
         if (this.stocksShowChange !== false) cols.push("change");
-        if (cols.length === 1) cols.push("symbol"); // never empty
+        if (this.stocksShowRefresh !== false) cols.push("refresh");
+        if (cols.length === 0) cols.push("symbol"); // never empty
         return cols;
     },
 
@@ -400,7 +402,7 @@ SysInfoDesklet.prototype = {
                 track_hover: true,
                 label: "↻"
             });
-            btn.set_style("padding: 0 6px 0 0; background: transparent; border: none;");
+            btn.set_style("padding: 0 0 0 6px; background: transparent; border: none;");
             if (btn.set_tooltip_text) btn.set_tooltip_text("Refresh " + sym);
             btn.connect("clicked", Lang.bind(this, function() {
                 this._fetchStocks([sym]);

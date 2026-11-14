@@ -54,12 +54,12 @@
         "stocks-main": {
             "type": "section",
             "title": "Stock ticker settings",
-            "keys": ["stocks-enabled", "stocks-refresh", "stocks-color-change"]
+            "keys": ["stocks-enabled", "stocks-refresh"]
         },
         "stocks-fields": {
             "type": "section",
             "title": "Columns to show for each stock",
-            "keys": ["stocks-show-symbol", "stocks-show-name", "stocks-show-price", "stocks-show-trend", "stocks-show-change"]
+            "keys": ["stocks-show-trend", "stocks-show-symbol", "stocks-show-name", "stocks-show-price", "stocks-show-change", "stocks-show-refresh", "stocks-color-change"]
         },
         "stocks-list-sec": {
             "type": "section",
@@ -308,8 +308,15 @@
     "stocks-color-change": {
         "type": "checkbox",
         "default": true,
-        "description": "Color percent change by direction",
-        "tooltip": "When on, positive changes render green and negative changes render red (overrides the row Color column for the change portion).",
+        "description": "Use green/red colors for trend and change",
+        "tooltip": "When on, the trend arrow and percent change render green for positive and red for negative. When off, they use the row Color column (or the theme default).",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-show-refresh": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Show per-stock refresh button",
+        "tooltip": "Display a ↻ button on the right of each row for manually refreshing that symbol.",
         "dependency": "stocks-enabled"
     },
     "stocks-show-symbol": {
