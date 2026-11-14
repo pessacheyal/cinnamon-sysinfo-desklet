@@ -716,7 +716,7 @@ SysInfoDesklet.prototype = {
         }
         if (this._removed) return;
         if (!this.stocksEnabled) return;
-        const mins = Math.max(1, Math.min(60, this.stocksRefresh || 5));
+        const mins = Math.max(1, Math.min(60, this.stocksRefresh || 10));
         this._stocksTimeout = Mainloop.timeout_add_seconds(mins * 60, Lang.bind(this, function() {
             if (this._removed) return false;
             this._fetchStocks();
@@ -898,6 +898,28 @@ SysInfoDesklet.prototype = {
     // ------------- settings-button callbacks -------------
     _onApplyClicked: function() {
         this._rebuildUI();
+    },
+
+    _onAddStocksClicked: function() {
+        const list = Array.isArray(this.sectionsList) ? JSON.parse(JSON.stringify(this.sectionsList)) : [];
+        let found = -1;
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].section === "stocks") { found = i; break; }
+        }
+        if (found >= 0) {
+            list[found].enabled = true;
+        } else {
+            list.push({ section: "stocks", enabled: true, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false });
+        }
+        this.stocksEnabled = true;
+        try { this.settings.setValue("stocks-enabled", true); } catch (e) {}
+        try {
+            this.settings.setValue("sections-list", list);
+        } catch (e) {
+            this.sectionsList = list;
+            this._rebuildUI();
+        }
+        this._fetchStocks();
     },
 
     _onResetClicked: function() {
