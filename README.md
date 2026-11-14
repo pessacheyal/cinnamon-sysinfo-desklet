@@ -13,6 +13,7 @@ A configurable desktop widget for the Cinnamon desktop (Linux Mint, or Cinnamon 
 - **Battery** — capacity % and charging state (auto-hidden on desktops)
 - **Network** — aggregate ↓/↑ throughput, optionally broken down per interface
 - **IP addresses** — local IP and public IP are now separate sections (each can be enabled or hidden independently). Local IP tries `hostname -I` then falls back to `ip -4 addr`. Public IP goes through `curl ifconfig.me` and is cached for 5 minutes.
+- **Stock ticker** — live quotes from Yahoo Finance for any list of symbols. Each symbol shows price and daily % change (green when up, red when down). The refresh interval is independent of the main refresh and configurable in minutes (default 5) so the API is not hammered.
 
 The desklet reads directly from `/proc` and `/sys` — no external daemons. Only `hostname`, `df`, and (optionally) `curl` are shelled out to; all are part of a standard Ubuntu install.
 
@@ -22,6 +23,7 @@ The desklet reads directly from `/proc` and `/sys` — no external daemons. Only
 - Font size, theme (auto / dark / light), and **background opacity** (0–100 %, use 0 for a fully transparent panel)
 - **Reorderable sections** — the *Sections* tab uses a list widget with Move Up / Move Down / Add / Remove / Show buttons, so you choose which stats appear and in which order
 - Public-IP lookup on the IP row (opt-in)
+- **Stocks** — on a dedicated *Stocks* tab: master on/off, refresh interval in minutes, per-symbol list with custom label / color / size / bold / italic, and an option to color the % change by direction (default on)
 - Sparkline graphs: on/off, width, height, history length (samples), and line color
 
 ## Install / upgrade

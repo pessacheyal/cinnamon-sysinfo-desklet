@@ -1,7 +1,7 @@
 {
     "layout": {
         "type": "layout",
-        "pages": ["general", "sections", "graphs"],
+        "pages": ["general", "sections", "graphs", "stocks"],
 
         "general": {
             "type": "page",
@@ -44,6 +44,22 @@
             "type": "section",
             "title": "History graphs",
             "keys": ["show-graphs", "graph-width", "graph-height", "graph-samples", "graph-color"]
+        },
+
+        "stocks": {
+            "type": "page",
+            "title": "Stocks",
+            "sections": ["stocks-main", "stocks-list-sec"]
+        },
+        "stocks-main": {
+            "type": "section",
+            "title": "Stock ticker settings",
+            "keys": ["stocks-enabled", "stocks-refresh", "stocks-color-change"]
+        },
+        "stocks-list-sec": {
+            "type": "section",
+            "title": "Symbols",
+            "keys": ["stocks-list"]
         }
     },
 
@@ -126,6 +142,7 @@
                     "WiFi name":               "wifi",
                     "Local IP address":        "ip-local",
                     "Public IP address":       "ip-public",
+                    "Stock ticker":            "stocks",
                     "Custom text":             "text",
                     "Command output":          "command"
                 }
@@ -217,7 +234,8 @@
             { "section": "network-ifaces", "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "wifi",           "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
             { "section": "ip-local",       "enabled": true,  "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
-            { "section": "ip-public",      "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false }
+            { "section": "ip-public",      "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false },
+            { "section": "stocks",         "enabled": false, "label": "", "command": "", "interval": 5, "color": "", "size": 0, "bold": false, "italic": false }
         ]
     },
 
@@ -260,5 +278,101 @@
         "default": "rgba(98,160,234,1)",
         "description": "Graph line color",
         "dependency": "show-graphs"
+    },
+
+    "stocks-enabled": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Enable stock ticker",
+        "tooltip": "Master switch. When off, the stock section renders nothing even if present in the sections list."
+    },
+    "stocks-refresh": {
+        "type": "spinbutton",
+        "default": 5, "min": 1, "max": 60, "step": 1,
+        "units": "minutes",
+        "description": "Stock refresh interval",
+        "tooltip": "How often to fetch quotes from Yahoo Finance (minutes). Avoid very short intervals to prevent rate limiting.",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-color-change": {
+        "type": "checkbox",
+        "default": true,
+        "description": "Color percent change by direction",
+        "tooltip": "When on, positive changes render green and negative changes render red (overrides the row Color column for the change portion).",
+        "dependency": "stocks-enabled"
+    },
+    "stocks-list": {
+        "type": "list",
+        "description": "Stock symbols",
+        "dependency": "stocks-enabled",
+        "columns": [
+            {
+                "id": "symbol",
+                "title": "Symbol",
+                "type": "string",
+                "default": "AAPL"
+            },
+            {
+                "id": "enabled",
+                "title": "Show",
+                "type": "boolean",
+                "align": 0.5,
+                "default": true
+            },
+            {
+                "id": "label",
+                "title": "Custom label",
+                "type": "string",
+                "default": ""
+            },
+            {
+                "id": "color",
+                "title": "Color",
+                "type": "string",
+                "default": "",
+                "options": {
+                    "Theme default": "",
+                    "White":         "#ffffff",
+                    "Black":         "#000000",
+                    "Red":           "#e5484d",
+                    "Orange":        "#f76b15",
+                    "Yellow":        "#ffcb47",
+                    "Green":         "#30a46c",
+                    "Cyan":          "#05a2c2",
+                    "Blue":          "#3e63dd",
+                    "Purple":        "#8e4ec6",
+                    "Pink":          "#e93d82"
+                }
+            },
+            {
+                "id": "size",
+                "title": "Size (px)",
+                "type": "integer",
+                "default": 0,
+                "min": 0,
+                "max": 72,
+                "step": 1,
+                "align": 0.5
+            },
+            {
+                "id": "bold",
+                "title": "Bold",
+                "type": "boolean",
+                "default": false,
+                "align": 0.5
+            },
+            {
+                "id": "italic",
+                "title": "Italic",
+                "type": "boolean",
+                "default": false,
+                "align": 0.5
+            }
+        ],
+        "default": [
+            { "symbol": "AAPL",  "enabled": true, "label": "", "color": "", "size": 0, "bold": false, "italic": false },
+            { "symbol": "MSFT",  "enabled": true, "label": "", "color": "", "size": 0, "bold": false, "italic": false },
+            { "symbol": "GOOGL", "enabled": true, "label": "", "color": "", "size": 0, "bold": false, "italic": false }
+        ]
     }
 }

@@ -11,6 +11,8 @@ const HISTORY_MAX_CAP = 240;
 const PUBLIC_IP_TTL_SEC = 300;
 const COMMAND_OUTPUT_MAX = 4000;
 const DARK_THEME_PATTERN = /dark|noir|black|nord|dracula|mint-y-d|arc-dark|adwaita-dark/;
+const STOCKS_UP_COLOR = "#30a46c";
+const STOCKS_DOWN_COLOR = "#e5484d";
 
 // section key → { hasGraph }.
 // (line-key mapping is gone in v1.7 — labels are keyed by row index so
@@ -30,6 +32,7 @@ const SECTION_MAP = {
     "wifi":           { hasGraph: false },
     "ip-local":       { hasGraph: false },
     "ip-public":      { hasGraph: false },
+    "stocks":         { hasGraph: false },
     "text":           { hasGraph: false },
     "command":        { hasGraph: false }
 };
@@ -52,6 +55,7 @@ const DEFAULT_LABELS = {
     "wifi":           "WiFi: ",
     "ip-local":       "Local: ",
     "ip-public":      "",
+    "stocks":         "",
     "text":           "",
     "command":        ""
 };
@@ -72,7 +76,8 @@ const DEFAULT_SECTIONS_LIST = [
     { section: "network-ifaces", enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "wifi",           enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
     { section: "ip-local",       enabled: true,  label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
-    { section: "ip-public",      enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false }
+    { section: "ip-public",      enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false },
+    { section: "stocks",         enabled: false, label: "", command: "", interval: 5, color: "", size: 0, bold: false, italic: false }
 ];
 
 function SysInfoDesklet(metadata, desklet_id) {
@@ -101,6 +106,10 @@ SysInfoDesklet.prototype = {
         this._labels = {};
         this._graphs = {};
         this._commandState = {};
+        this._stockQuotes = {};
+        this._stocksFetching = false;
+        this._stocksFetchedAt = 0;
+        this._stocksTimeout = null;
 
         this._bindSettings(desklet_id);
         this._bindTheme();
@@ -109,6 +118,8 @@ SysInfoDesklet.prototype = {
         this._applyStyle();
         this._update();
         this._reschedule();
+        this._rescheduleStocks();
+        this._fetchStocks();
     },
 
     _bindSettings: function(desklet_id) {
@@ -135,6 +146,12 @@ SysInfoDesklet.prototype = {
         this.settings.bindProperty(b, "graph-height",    "graphHeight",   onSection);
         this.settings.bindProperty(b, "graph-samples",   "graphSamples",  onSection);
         this.settings.bindProperty(b, "graph-color",     "graphColor",    onColor);
+
+        const onStocksSchedule = Lang.bind(this, this._onStocksConfigChanged);
+        this.settings.bindProperty(b, "stocks-enabled",      "stocksEnabled",     onStocksSchedule);
+        this.settings.bindProperty(b, "stocks-refresh",      "stocksRefresh",     onStocksSchedule);
+        this.settings.bindProperty(b, "stocks-color-change", "stocksColorChange", onSection);
+        this.settings.bindProperty(b, "stocks-list",         "stocksList",        onStocksSchedule);
     },
 
     _bindTheme: function() {
@@ -240,6 +257,7 @@ SysInfoDesklet.prototype = {
             }
 
             if (!SECTION_MAP[row.section]) continue;
+            if (row.section === "stocks" && !this.stocksEnabled) continue;
             this._orderedRows.push(this._normalizeRow(row));
         }
     },
@@ -674,6 +692,209 @@ SysInfoDesklet.prototype = {
         }
     },
 
+    // ------------- stock ticker -------------
+    _enabledStockSymbols: function() {
+        const list = Array.isArray(this.stocksList) ? this.stocksList : [];
+        const out = [];
+        const seen = {};
+        for (let i = 0; i < list.length; i++) {
+            const r = list[i];
+            if (!r || r.enabled === false) continue;
+            const sym = String(r.symbol || "").trim().toUpperCase();
+            if (!sym) continue;
+            if (seen[sym]) continue;
+            seen[sym] = true;
+            out.push(sym);
+        }
+        return out;
+    },
+
+    _rescheduleStocks: function() {
+        if (this._stocksTimeout) {
+            Mainloop.source_remove(this._stocksTimeout);
+            this._stocksTimeout = null;
+        }
+        if (this._removed) return;
+        if (!this.stocksEnabled) return;
+        const mins = Math.max(1, Math.min(60, this.stocksRefresh || 5));
+        this._stocksTimeout = Mainloop.timeout_add_seconds(mins * 60, Lang.bind(this, function() {
+            if (this._removed) return false;
+            this._fetchStocks();
+            return true;
+        }));
+    },
+
+    _onStocksConfigChanged: function() {
+        this._rescheduleStocks();
+        this._fetchStocks();
+        this._rebuildUI();
+    },
+
+    _fetchStocks: function() {
+        if (this._removed) return;
+        if (!this.stocksEnabled) return;
+        if (this._stocksFetching) return;
+        const symbols = this._enabledStockSymbols();
+        if (symbols.length === 0) return;
+
+        this._stocksFetching = true;
+        const url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" + encodeURIComponent(symbols.join(","));
+        try {
+            const proc = Gio.Subprocess.new(
+                ["curl", "-sL", "-A", "Mozilla/5.0", "-m", "10", url],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
+            );
+            proc.communicate_utf8_async(null, null, Lang.bind(this, function(p, res) {
+                this._stocksFetching = false;
+                if (this._removed) return;
+                try {
+                    const result = p.communicate_utf8_finish(res);
+                    const body = (result[1] || "").trim();
+                    this._parseStocksResponse(body);
+                } catch (e) {
+                    // leave cache untouched on failure
+                }
+                this._stocksFetchedAt = GLib.get_monotonic_time() / 1000000;
+                this._refreshStockLabels();
+            }));
+        } catch (e) {
+            this._stocksFetching = false;
+        }
+    },
+
+    _parseStocksResponse: function(body) {
+        if (!body) return;
+        let json;
+        try { json = JSON.parse(body); } catch (e) { return; }
+        const qr = json && json.quoteResponse;
+        const results = qr && Array.isArray(qr.result) ? qr.result : null;
+        if (!results) return;
+        for (let i = 0; i < results.length; i++) {
+            const q = results[i];
+            if (!q || !q.symbol) continue;
+            const price = (q.regularMarketPrice !== undefined && q.regularMarketPrice !== null)
+                ? q.regularMarketPrice : null;
+            const changePct = (q.regularMarketChangePercent !== undefined && q.regularMarketChangePercent !== null)
+                ? q.regularMarketChangePercent : null;
+            const change = (q.regularMarketChange !== undefined && q.regularMarketChange !== null)
+                ? q.regularMarketChange : null;
+            const currency = q.currency || "";
+            this._stockQuotes[String(q.symbol).toUpperCase()] = {
+                price: price,
+                change: change,
+                changePct: changePct,
+                currency: currency
+            };
+        }
+    },
+
+    _escapeMarkup: function(s) {
+        return String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    },
+
+    _currencySymbol: function(code) {
+        switch ((code || "").toUpperCase()) {
+            case "USD": return "$";
+            case "EUR": return "€";
+            case "GBP": return "£";
+            case "JPY": return "¥";
+            case "ILS": return "₪";
+            case "INR": return "₹";
+            case "CNY": return "¥";
+            default: return "";
+        }
+    },
+
+    _formatPrice: function(p) {
+        if (p === null || p === undefined || isNaN(p)) return "—";
+        if (Math.abs(p) >= 1000) return p.toFixed(0);
+        if (Math.abs(p) >= 100)  return p.toFixed(2);
+        return p.toFixed(2);
+    },
+
+    // Build the markup string for the stock section. One line per enabled
+    // symbol. Returns pango markup when color-by-change is on, plain text
+    // otherwise. The caller decides which St.Label method to use.
+    _renderStocksBlock: function(useMarkup) {
+        const list = Array.isArray(this.stocksList) ? this.stocksList : [];
+        const lines = [];
+        for (let i = 0; i < list.length; i++) {
+            const r = list[i];
+            if (!r || r.enabled === false) continue;
+            const sym = String(r.symbol || "").trim().toUpperCase();
+            if (!sym) continue;
+            const label = r.label ? r.label : sym;
+            const q = this._stockQuotes[sym];
+            if (!q) {
+                lines.push(useMarkup
+                    ? this._escapeMarkup(label) + "  <i>loading…</i>"
+                    : label + "  loading…");
+                continue;
+            }
+            const cur = this._currencySymbol(q.currency);
+            const priceStr = cur + this._formatPrice(q.price);
+            let changeStr;
+            if (q.changePct === null || q.changePct === undefined || isNaN(q.changePct)) {
+                changeStr = "";
+            } else {
+                const sign = q.changePct >= 0 ? "+" : "";
+                changeStr = sign + q.changePct.toFixed(2) + "%";
+            }
+            if (useMarkup) {
+                let line = this._escapeMarkup(label) + "  " + this._escapeMarkup(priceStr);
+                if (changeStr) {
+                    const color = q.changePct >= 0 ? STOCKS_UP_COLOR : STOCKS_DOWN_COLOR;
+                    line += "  <span foreground=\"" + color + "\">" + this._escapeMarkup(changeStr) + "</span>";
+                }
+                lines.push(line);
+            } else {
+                lines.push(label + "  " + priceStr + (changeStr ? "  " + changeStr : ""));
+            }
+        }
+        if (lines.length === 0) {
+            return useMarkup ? "<i>no symbols</i>" : "no symbols";
+        }
+        return lines.join("\n");
+    },
+
+    _refreshStockLabels: function() {
+        if (!this._labels) return;
+        for (let i = 0; i < this._orderedRows.length; i++) {
+            const row = this._orderedRows[i];
+            if (row.section !== "stocks") continue;
+            if (!this._labels[i]) continue;
+            this._applyStockLabel(i, row);
+        }
+    },
+
+    _applyStockLabel: function(index, row) {
+        const label = this._labels[index];
+        if (!label) return;
+        const prefix = this._prefix(row);
+        const useMarkup = this.stocksColorChange !== false;
+        if (useMarkup) {
+            const body = this._renderStocksBlock(true);
+            let markup;
+            if (prefix) {
+                const prefSafe = this._escapeMarkup(prefix);
+                markup = body.split("\n").map(function(l) { return prefSafe + l; }).join("\n");
+            } else {
+                markup = body;
+            }
+            try {
+                label.clutter_text.set_markup(markup);
+                return;
+            } catch (e) {
+                // fall through to plain-text path
+            }
+        }
+        const plain = this._renderStocksBlock(false);
+        label.set_text(this._applyPrefix(prefix, plain));
+    },
+
     // ------------- settings-button callbacks -------------
     _onApplyClicked: function() {
         this._rebuildUI();
@@ -842,6 +1063,10 @@ SysInfoDesklet.prototype = {
                 label.set_text(this._applyPrefix(prefix, out || "…"));
                 continue;
             }
+            if (row.section === "stocks") {
+                this._applyStockLabel(i, row);
+                continue;
+            }
             const raw = values[row.section];
             if (raw === undefined) continue;
             label.set_text(this._applyPrefix(prefix, raw));
@@ -855,6 +1080,10 @@ SysInfoDesklet.prototype = {
         if (this._timeout) {
             Mainloop.source_remove(this._timeout);
             this._timeout = null;
+        }
+        if (this._stocksTimeout) {
+            Mainloop.source_remove(this._stocksTimeout);
+            this._stocksTimeout = null;
         }
         if (this._ifaceSettings && this._themeConn) {
             try { this._ifaceSettings.disconnect(this._themeConn); } catch (e) {}
